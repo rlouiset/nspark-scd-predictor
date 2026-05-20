@@ -2,7 +2,7 @@
 
 A web-based clinical decision support tool for predicting **Subjective Cognitive Decline (SCD)** in Parkinson's Disease patients, based on routinely collected clinical data.
 
-🔗 **[Live Demo](https://YOUR_USERNAME.github.io/nspark-predictor/)**
+🔗 **[Live Demo](https://rlouiset.github.io/nspark-scd-predictor/)**
 
 ![Screenshot](screenshot.png)
 
