@@ -14,7 +14,7 @@ A web-based clinical decision support tool for predicting **Subjective Cognitive
 
 This tool implements the XGBoost classification model from:
 
-> Louiset et al., "Risk stratification of future subjective cognitive decline in Parkinson's disease using large-scale real-world routine clinical data" (2025)
+> Louiset et al., "Risk stratification of future subjective cognitive decline in Parkinson's disease using large-scale real-world routine clinical data" (2026)
 
 The model was trained on the **NS-Park French real-world cohort** (2,593 patients, 21,626 longitudinal segments) and externally validated on the **PPMI cohort** (1,467 patients).
 
@@ -70,7 +70,7 @@ This tool is for **research purposes only**. It is not a certified medical devic
 @article{louiset2025nspark,
   title={Risk stratification of future subjective cognitive decline in Parkinson's disease using large-scale real-world routine clinical data},
   author={Louiset, Robin and Massart, Renaud and Cacciamani, Federica and others},
-  year={2025}
+  year={2026}
 }
 ```
 

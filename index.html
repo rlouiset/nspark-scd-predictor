@@ -613,6 +613,27 @@ body {
   letter-spacing: 0.5px;
 }
 
+.risk-explanation {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-light);
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.risk-explanation strong {
+  color: var(--ink);
+}
+
+.typical-range {
+  font-size: 10px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+  font-style: italic;
+}
+
 /* Probability chart */
 .curve-container {
   position: relative;
@@ -808,16 +829,19 @@ body {
               <div class="field">
                 <label>Age <span class="hint">(years)</span></label>
                 <input type="number" id="f_age" min="30" max="95" step="0.5" placeholder="e.g. 65">
+                <div class="typical-range">Typical in cohort: 64 ± 10 years</div>
               </div>
               <div class="field">
                 <label>Disease duration <span class="hint">(years)</span></label>
                 <input type="number" id="f_disease_duration" min="0" max="40" step="0.5" placeholder="e.g. 8">
+                <div class="typical-range">Typical in cohort: 8 ± 7 years</div>
               </div>
             </div>
             <div class="field-row">
               <div class="field">
                 <label>Education <span class="hint">(years of study)</span></label>
                 <input type="number" id="f_park_sd_nivetudes" min="0" max="25" step="1" placeholder="e.g. 12">
+                <div class="typical-range">Typical in cohort: 13 ± 4 years</div>
               </div>
               <div class="field">
                 <label>Family history of PD</label>
@@ -874,6 +898,7 @@ body {
                   <input type="number" id="f_hoehn_yahr_on" min="0" max="5" step="0.5" placeholder="0–5">
                   <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_hoehn_yahr_on')">Unknown</button>
                 </div>
+                <div class="typical-range">Typical in cohort: 2.0 ± 0.7</div>
               </div>
               <div class="field">
                 <label>Hoehn & Yahr OFF
@@ -883,6 +908,7 @@ body {
                   <input type="number" id="f_hoehn_yahr_off" min="0" max="5" step="0.5" placeholder="0–5">
                   <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_hoehn_yahr_off')">Unknown</button>
                 </div>
+                <div class="typical-range">Typical in cohort: 2.2 ± 0.9</div>
               </div>
             </div>
             <div class="field">
@@ -893,6 +919,7 @@ body {
                 <input type="number" id="f_ttt_ledd_totale" min="0" max="5000" step="10" placeholder="e.g. 600">
                 <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_ttt_ledd_totale')">Unknown</button>
               </div>
+              <div class="typical-range">Typical in cohort: 440 ± 450 mg/day</div>
             </div>
           </div>
         </div>
@@ -966,7 +993,7 @@ body {
     <!-- SHAP -->
     <div class="result-card full-width" id="shapCard">
       <div class="card-header">
-        <h3>🔍 Feature Contributions (SHAP)</h3>
+        <h3>🔍 What is driving this prediction?</h3>
         <select id="shapYearSelect" style="height:30px; border:1px solid var(--border); border-radius:6px; font-family:'DM Sans'; font-size:12px; padding:0 8px; background:white;">
           <option value="3">at 3 years</option>
           <option value="5" selected>at 5 years</option>
@@ -974,6 +1001,9 @@ body {
         </select>
       </div>
       <div class="card-body">
+        <div style="font-size:12.5px; line-height:1.6; color:var(--ink-light); margin-bottom:14px; padding:10px 14px; background:var(--surface); border-radius:var(--radius-sm); border:1px solid var(--border);">
+          The chart below shows which clinical features most influence the prediction <em>for this specific patient</em>, computed using exact TreeSHAP values (Lundberg et al., 2020). Each bar represents a feature: <strong style="color:#e07070">red bars</strong> push the risk up, <strong style="color:#5aad8a">green bars</strong> push it down. Longer bars mean a stronger effect. All contributions sum exactly to the difference between this patient's prediction and the population baseline. Features left as "N/A" are excluded from the display.
+        </div>
         <div class="shap-base-info" id="shapBaseInfo"></div>
         <div class="shap-container" id="shapContainer"></div>
         <div class="shap-legend">
@@ -998,8 +1028,11 @@ body {
         <div class="method-note">
           <strong>Model:</strong> XGBoost classifier (500 trees, max_depth=15, lr=0.01) trained on the NS-Park French real-world cohort (2,593 patients, 21,626 longitudinal segments). Predicts worsening of subjective cognitive decline (MDS-UPDRS Part I.1 ≥ 2 at follow-up, from baseline &lt; 2).<br><br>
           <strong>Validation:</strong> AUC 0.80 on NS-Park held-out test set; AUC 0.73 on external PPMI cohort (n=1,467).<br><br>
-          <strong>SHAP Interpretability:</strong> Instance-wise feature contributions computed using a marginal intervention approach — each feature is individually set to the population median while all others are held fixed, and the resulting change in log-odds quantifies its contribution.<br><br>
-          <strong>Reference:</strong> Louiset et al., "Risk stratification of future subjective cognitive decline in Parkinson's disease using large-scale real-world routine clinical data" (2025).
+          <strong>Feature contributions:</strong> The "What is driving this prediction?" chart displays exact SHAP (SHapley Additive exPlanations) values computed using the <em>TreeSHAP</em> algorithm (Lundberg et al., "From local explanations to global understanding with explainable AI for trees", Nature Machine Intelligence, 2020). TreeSHAP exploits the tree structure to compute Shapley values in polynomial time: each feature's contribution is its average marginal effect across all possible orderings of features, weighted by the training data distribution at each tree node. Unlike simpler perturbation methods, TreeSHAP guarantees <strong>additivity</strong> — contributions sum exactly to the difference between the prediction and the population baseline — as well as consistency and local accuracy. Features marked as N/A are excluded from the chart display. Computation runs entirely in-browser in JavaScript (~1 second per prediction for 500 trees).<br><br>
+          <strong>Missing data:</strong> The XGBoost model natively handles missing values by learning optimal default split directions during training — when a feature is unknown, the model follows the path that was most common for missing values in the training data. This is a built-in capability of XGBoost (Chen & Guestrin, "XGBoost: A Scalable Tree Boosting System", KDD 2016).<br><br>
+          <strong>Risk thresholds:</strong> Low risk (&lt; 25%), Moderate (25–50%), and Elevated (&gt; 50%) are indicative categories to aid interpretation. They are not clinically validated cut-offs.<br><br>
+          <strong>Privacy:</strong> All computation runs entirely in your browser. No patient data is transmitted to any server.<br><br>
+          <strong>Reference:</strong> Louiset et al., "Risk stratification of future subjective cognitive decline in Parkinson's disease using large-scale real-world routine clinical data" (2026).
         </div>
       </div>
     </div>
@@ -1030,50 +1063,50 @@ const FEATURE_LABELS = {
   pat_sexe:"Sex", age:"Age", disease_duration:"Disease Duration",
   park_sd_nivetudes:"Education (years)", diag_lateralite:"Handedness",
   fluct_motrice:"Motor Fluctuations", dyskinesie:"Dyskinesia",
-  douleur:"Pain", dysarthrie:"Dysarthria", freezing:"Freezing of Gait",
+  douleur:"Pain", dysarthrie:"Speech Difficulties", freezing:"Freezing of Gait",
   chute_instab:"Falls / Postural Instab.", deform_post:"Postural Deformity",
-  tr_degl:"Swallowing Difficulty", rbd:"REM Sleep Behavior Dis.",
+  tr_degl:"Swallowing Difficulties", rbd:"REM Sleep Behavior Dis.",
   sjsr:"Restless Legs", somnolence:"Daytime Sleepiness",
   hypotension:"Orthostatic Hypotension", digestif:"GI Symptoms",
   urine:"Urinary Symptoms", poids:"Weight (kg)", atcd_fam_yn:"Family History PD",
   apathie:"Apathy", depression:"Depression", anxiete:"Anxiety",
   halluc_psy:"Hallucinations/Psychosis", tci:"Impulse Control Dis.",
-  add_ldopa:"L-DOPA Addiction", punding:"Punding",
+  add_ldopa:"Dopaminergic Addiction", punding:"Punding",
   diag_symptc1:"Onset Side (L/R)", tr_cognitif:"Cognitive Complaints",
-  hoehn_yahr_on:"H&Y ON", hoehn_yahr_off:"H&Y OFF",
-  ttt_ledd_totale:"Total LEDD", "years in the future":"Prediction Horizon"
+  hoehn_yahr_on:"Hoehn & Yahr ON", hoehn_yahr_off:"Hoehn & Yahr OFF",
+  ttt_ledd_totale:"Total LEDD (mg/day)", "years in the future":"Prediction Horizon"
 };
 
 const SCORE_FIELDS = {
   motor: [
-    {id:"fluct_motrice", label:"Motor fluctuations", max:4, desc:"Fluctuations in motor function during the day (ON/OFF periods)"},
-    {id:"dyskinesie", label:"Dyskinesia", max:3, desc:"Involuntary movements, often related to medication"},
-    {id:"douleur", label:"Pain", max:4, desc:"MDS-UPDRS 1.9 — Pain and other sensations: tingling, aching, burning"},
-    {id:"dysarthrie", label:"Dysarthria", max:4, desc:"MDS-UPDRS 3.1 — Speech difficulties: softness, slurring, hesitancy"},
-    {id:"freezing", label:"Freezing of gait", max:4, desc:"MDS-UPDRS 3.11 — Sudden inability to move feet during walking"},
-    {id:"chute_instab", label:"Falls / Postural instability", max:4, desc:"MDS-UPDRS 3.12 — Pull test: tendency to lose balance or fall"},
-    {id:"deform_post", label:"Postural deformity", max:4, desc:"MDS-UPDRS 3.13 — Stooped, flexed, or leaning posture"},
-    {id:"tr_degl", label:"Swallowing difficulty", max:4, desc:"MDS-UPDRS 2.3 — Chewing and swallowing problems, drooling"},
+    {id:"fluct_motrice", label:"Motor fluctuations", max:4, desc:"Variations in motor function during the day — alternating between periods of good mobility (ON) and reduced mobility (OFF). 0 = none, 4 = severe and unpredictable."},
+    {id:"dyskinesie", label:"Dyskinesia", max:3, desc:"Involuntary, uncontrolled movements (writhing, jerking), often occurring as a side effect of dopaminergic medication. 0 = none, 3 = severe."},
+    {id:"douleur", label:"Pain", max:4, desc:"MDS-UPDRS 1.9 — Unexplained pain, tingling, burning, or aching sensations not attributable to another cause. 0 = none, 4 = severe and disabling."},
+    {id:"dysarthrie", label:"Speech difficulties", max:4, desc:"MDS-UPDRS 3.1 — Problems with speech clarity: speaking too softly, slurring words, or hesitating. 0 = normal speech, 4 = mostly unintelligible."},
+    {id:"freezing", label:"Freezing of gait", max:4, desc:"MDS-UPDRS 3.11 — Sudden, brief episodes of being unable to move the feet during walking, as if glued to the floor. 0 = never, 4 = frequent falls from freezing."},
+    {id:"chute_instab", label:"Falls / Postural instability", max:4, desc:"MDS-UPDRS 3.12 — Tendency to lose balance, stumble, or fall. Assessed by the 'pull test' (response to a backward pull on the shoulders). 0 = normal, 4 = unable to stand unaided."},
+    {id:"deform_post", label:"Postural deformity", max:4, desc:"MDS-UPDRS 3.13 — Abnormal body posture: stooped, bent forward, or leaning to one side. 0 = normal upright posture, 4 = extreme flexion."},
+    {id:"tr_degl", label:"Swallowing difficulties", max:4, desc:"MDS-UPDRS 2.3 — Trouble chewing or swallowing food, excessive drooling. 0 = normal swallowing, 4 = requires feeding tube."},
   ],
   nonMotor: [
-    {id:"hypotension", label:"Orthostatic hypotension", max:4, desc:"MDS-UPDRS 1.12 — Lightheadedness on standing, fainting"},
-    {id:"digestif", label:"GI symptoms", max:4, desc:"MDS-UPDRS 1.11 — Constipation, bloating, nausea"},
-    {id:"urine", label:"Urinary symptoms", max:4, desc:"MDS-UPDRS 1.10 — Urgency, frequency, incontinence"},
-    {id:"poids", label:"Weight", type:"number", min:30, max:180, step:1, placeholder:"kg"},
+    {id:"hypotension", label:"Orthostatic hypotension", max:4, desc:"MDS-UPDRS 1.12 — Drop in blood pressure when standing up, causing dizziness, lightheadedness, or fainting. 0 = never, 4 = frequently causes falls or fainting."},
+    {id:"digestif", label:"Gastrointestinal symptoms", max:4, desc:"MDS-UPDRS 1.11 — Constipation, bloating, nausea, or difficulty with bowel movements. 0 = none, 4 = requires regular use of laxatives or interventions."},
+    {id:"urine", label:"Urinary symptoms", max:4, desc:"MDS-UPDRS 1.10 — Urinary urgency (sudden need to urinate), increased frequency, or incontinence. 0 = none, 4 = requires a catheter."},
+    {id:"poids", label:"Weight", type:"number", min:30, max:180, step:1, placeholder:"kg", desc:"Patient's body weight in kilograms. Typical in cohort: 74 ± 17 kg."},
   ],
   sleep: [
-    {id:"rbd", label:"REM sleep behavior disorder", max:1, desc:"Acting out dreams during sleep (kicking, screaming, punching)"},
-    {id:"sjsr", label:"Restless legs syndrome", max:1, desc:"Irresistible urge to move legs, especially at rest or night"},
-    {id:"somnolence", label:"Daytime sleepiness", max:4, desc:"MDS-UPDRS 1.8 — Falling asleep or struggling to stay awake during daytime"},
+    {id:"rbd", label:"REM sleep behavior disorder", max:1, desc:"Acting out dreams during REM sleep — kicking, punching, shouting, or falling out of bed. Often precedes Parkinson's motor symptoms by years. 0 = absent, 1 = present."},
+    {id:"sjsr", label:"Restless legs syndrome", max:1, desc:"An irresistible urge to move the legs, typically worse at rest and in the evening/night, temporarily relieved by movement. 0 = absent, 1 = present."},
+    {id:"somnolence", label:"Daytime sleepiness", max:4, desc:"MDS-UPDRS 1.8 — Difficulty staying awake during the day: falling asleep while reading, watching TV, or in conversation. 0 = never, 4 = uncontrollable sleep attacks."},
   ],
   psych: [
-    {id:"apathie", label:"Apathy", max:4, desc:"MDS-UPDRS 1.5 — Loss of motivation, reduced initiative and interest"},
-    {id:"depression", label:"Depression", max:3, desc:"MDS-UPDRS 1.3 — Depressed mood: sadness, hopelessness, loss of pleasure"},
-    {id:"anxiete", label:"Anxiety", max:4, desc:"MDS-UPDRS 1.4 — Anxious mood: nervousness, worry, panic"},
-    {id:"halluc_psy", label:"Hallucinations / Psychosis", max:4, desc:"MDS-UPDRS 1.2 — Visual illusions, hallucinations, delusions"},
-    {id:"tci", label:"Impulse control disorder", max:3, desc:"MDS-UPDRS 1.6 — Compulsive gambling, shopping, eating, hypersexuality"},
-    {id:"add_ldopa", label:"L-DOPA addiction", max:2, desc:"Compulsive overuse of dopaminergic medication beyond clinical need"},
-    {id:"punding", label:"Punding", max:3, desc:"Repetitive purposeless behaviors: sorting, collecting, fiddling with objects"},
+    {id:"apathie", label:"Apathy", max:4, desc:"MDS-UPDRS 1.5 — Loss of motivation, reduced initiative, and diminished interest in usual activities or social life. 0 = none, 4 = complete withdrawal from daily activities."},
+    {id:"depression", label:"Depression", max:3, desc:"MDS-UPDRS 1.3 — Persistent low mood: sadness, hopelessness, loss of pleasure in previously enjoyed activities. 0 = none, 3 = severe and pervasive."},
+    {id:"anxiete", label:"Anxiety", max:4, desc:"MDS-UPDRS 1.4 — Feelings of nervousness, worry, or panic that may occur with or without identifiable triggers. 0 = none, 4 = disabling anxiety or panic attacks."},
+    {id:"halluc_psy", label:"Hallucinations / Psychosis", max:4, desc:"MDS-UPDRS 1.2 — Seeing things that aren't there (visual hallucinations), hearing voices, or holding false beliefs (delusions). 0 = none, 4 = severe and persistent."},
+    {id:"tci", label:"Impulse control disorder", max:3, desc:"MDS-UPDRS 1.6 — Compulsive behaviors: gambling, excessive shopping, binge eating, or hypersexuality, often linked to dopaminergic medication. 0 = none, 3 = severe."},
+    {id:"add_ldopa", label:"Dopaminergic addiction", max:2, desc:"Compulsive overuse of dopaminergic medication (L-DOPA, agonists) beyond what is clinically needed, despite negative consequences. 0 = none, 2 = severe."},
+    {id:"punding", label:"Punding", max:3, desc:"Repetitive, purposeless behaviors: endlessly sorting objects, taking apart and reassembling devices, collecting things, or fiddling compulsively. 0 = none, 3 = severe."},
   ]
 };
 
@@ -1321,18 +1354,124 @@ function buildFeatureVector(vals, yearsInFuture) {
 }
 
 // ============================================================
-// SHAP (marginal intervention approximation)
+// TreeSHAP (Lundberg et al., "Consistent feature attribution
+// for tree ensembles", 2018, arXiv:1706.06060)
 // ============================================================
-function computeSHAP(features, baseFeatures) {
-  const fullRaw = predictRaw(features);
-  const shapValues = [];
-  for (let i = 0; i < features.length; i++) {
-    const modified = [...features];
-    modified[i] = baseFeatures[i];
-    const modRaw = predictRaw(modified);
-    shapValues.push(fullRaw - modRaw);
+function treeShapSingle(tree, x, nFeatures) {
+  const phi = new Float64Array(nFeatures);
+
+  function recurse(node, uDepth, pW, pF, pZ, pO) {
+    // Extend path
+    const nW = new Float64Array(uDepth + 1);
+    const nF = new Int32Array(uDepth + 1);
+    const nZ = new Float64Array(uDepth + 1);
+    const nO = new Float64Array(uDepth + 1);
+    for (let i = 0; i < uDepth; i++) { nF[i]=pF[i]; nZ[i]=pZ[i]; nO[i]=pO[i]; }
+    nF[uDepth]=pF[uDepth]; nZ[uDepth]=pZ[uDepth]; nO[uDepth]=pO[uDepth];
+    if (uDepth === 0) { nW[0] = 1; }
+    else {
+      nW[uDepth] = 0;
+      for (let i = uDepth - 1; i >= 0; i--) {
+        nW[i+1] += nO[uDepth] * pW[i] * (i+1) / (uDepth+1);
+        nW[i] = nZ[uDepth] * pW[i] * (uDepth-i) / (uDepth+1);
+      }
+    }
+
+    if (tree.l[node] === -1) {
+      const lv = tree.w[node];
+      for (let i = 1; i <= uDepth; i++) {
+        const oF = nO[i], zF = nZ[i];
+        let nextO = nW[uDepth], total = 0;
+        for (let j = uDepth - 1; j >= 0; j--) {
+          if (oF !== 0) {
+            const tmp = nextO * (uDepth+1) / ((j+1) * oF);
+            total += tmp;
+            nextO = nW[j] - tmp * zF * (uDepth-j) / (uDepth+1);
+          } else if (zF !== 0) {
+            total += (nW[j] / zF) * ((uDepth+1) / (uDepth-j));
+          }
+        }
+        phi[nF[i]] += total * (oF - zF) * lv;
+      }
+      return;
+    }
+
+    const sf = tree.f[node], st = tree.v[node], dl = tree.d[node];
+    const lc = tree.l[node], rc = tree.r[node];
+    const v = x[sf];
+    let hc, cc;
+    if (v !== v) { hc = dl ? lc : rc; cc = dl ? rc : lc; }
+    else if (v < st) { hc = lc; cc = rc; }
+    else { hc = rc; cc = lc; }
+
+    const hzf = tree.c[hc] / tree.c[node];
+    const czf = tree.c[cc] / tree.c[node];
+
+    let di = -1;
+    for (let i = uDepth; i >= 0; i--) { if (nF[i] === sf) { di = i; break; } }
+
+    const nd = uDepth + 1;
+    if (di >= 0) {
+      const sO = nO[di], sZ = nZ[di];
+      // Unwind duplicate
+      const uw = uDepth - 1;
+      const uwW = new Float64Array(uw + 1);
+      const uwF = new Int32Array(uw + 1);
+      const uwZ = new Float64Array(uw + 1);
+      const uwO = new Float64Array(uw + 1);
+      let wi = 0;
+      for (let i = 0; i <= uDepth; i++) {
+        if (i === di) continue;
+        uwF[wi]=nF[i]; uwZ[wi]=nZ[i]; uwO[wi]=nO[i]; wi++;
+      }
+      uwW[0] = 1;
+      for (let i = 1; i <= uw; i++) {
+        uwW[i] = 0;
+        for (let j = i-1; j >= 0; j--) {
+          uwW[j+1] += uwO[i] * uwW[j] * (j+1) / (i+1);
+          uwW[j] = uwZ[i] * uwW[j] * (i-j) / (i+1);
+        }
+      }
+      // Hot
+      const cf1 = new Int32Array(uw+2); const cz1 = new Float64Array(uw+2); const co1 = new Float64Array(uw+2);
+      for (let i = 0; i <= uw; i++) { cf1[i]=uwF[i]; cz1[i]=uwZ[i]; co1[i]=uwO[i]; }
+      cf1[uw+1]=sf; cz1[uw+1]=hzf*sZ; co1[uw+1]=sO;
+      recurse(hc, uw+1, uwW, cf1, cz1, co1);
+      // Cold
+      const cf2 = new Int32Array(uw+2); const cz2 = new Float64Array(uw+2); const co2 = new Float64Array(uw+2);
+      for (let i = 0; i <= uw; i++) { cf2[i]=uwF[i]; cz2[i]=uwZ[i]; co2[i]=uwO[i]; }
+      cf2[uw+1]=sf; cz2[uw+1]=czf*sZ; co2[uw+1]=0;
+      recurse(cc, uw+1, uwW, cf2, cz2, co2);
+    } else {
+      // Hot
+      const cf1 = new Int32Array(nd+1); const cz1 = new Float64Array(nd+1); const co1 = new Float64Array(nd+1);
+      for (let i = 0; i <= uDepth; i++) { cf1[i]=nF[i]; cz1[i]=nZ[i]; co1[i]=nO[i]; }
+      cf1[nd]=sf; cz1[nd]=hzf; co1[nd]=1;
+      recurse(hc, nd, nW, cf1, cz1, co1);
+      // Cold
+      const cf2 = new Int32Array(nd+1); const cz2 = new Float64Array(nd+1); const co2 = new Float64Array(nd+1);
+      for (let i = 0; i <= uDepth; i++) { cf2[i]=nF[i]; cz2[i]=nZ[i]; co2[i]=nO[i]; }
+      cf2[nd]=sf; cz2[nd]=czf; co2[nd]=0;
+      recurse(cc, nd, nW, cf2, cz2, co2);
+    }
   }
-  return shapValues;
+
+  const iF = new Int32Array(1); iF[0] = -1;
+  const iZ = new Float64Array(1); iZ[0] = 1;
+  const iO = new Float64Array(1); iO[0] = 1;
+  const iW = new Float64Array(1); iW[0] = 1;
+  recurse(0, 0, iW, iF, iZ, iO);
+  return phi;
+}
+
+function computeTreeSHAP(features) {
+  const n = MODEL.n_features;
+  const total = new Float64Array(n);
+  for (const tree of MODEL.trees) {
+    const tp = treeShapSingle(tree, features, n);
+    for (let i = 0; i < n; i++) total[i] += tp[i];
+  }
+  return Array.from(total);
 }
 
 // ============================================================
@@ -1429,7 +1568,7 @@ function renderSHAP(shapValues, featureValues, year) {
     featName: FEATURES_ORDER[i]
   }));
 
-  const filtered = indexed.filter(d => d.featName !== 'years in the future');
+  const filtered = indexed.filter(d => d.featName !== 'years in the future' && !Number.isNaN(d.featVal));
   filtered.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
   const top = filtered.slice(0, 15);
 
@@ -1488,6 +1627,13 @@ function renderRiskTiles(probs) {
     `;
   });
 
+  html += `<div class="risk-explanation">
+    <strong>How to read:</strong> The percentage indicates the model's estimated probability that this patient will develop significant cognitive complaints (MDS-UPDRS I.1 ≥ 2) within the given time horizon.
+    <strong>Low</strong> (&lt; 25%): the model considers the risk below the population average.
+    <strong>Moderate</strong> (25–50%): the risk is above average and warrants monitoring.
+    <strong>Elevated</strong> (&gt; 50%): the model estimates a high probability of future cognitive decline.
+  </div>`;
+
   container.innerHTML = html;
 }
 
@@ -1531,7 +1677,7 @@ function runPrediction() {
 function runSHAP(year) {
   if (!lastVals) return;
   const vec = buildFeatureVector(lastVals, year);
-  const shapVals = computeSHAP(vec, MEDIANS);
+  const shapVals = computeTreeSHAP(vec);
   renderSHAP(shapVals, vec, year);
 }
 
