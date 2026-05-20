@@ -427,6 +427,74 @@ body {
 }
 
 /* ── PREDICT BUTTON ── */
+.input-with-unknown {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.input-with-unknown input {
+  flex: 1;
+}
+.input-with-unknown input.is-unknown {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.unknown-btn {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.unknown-btn.active {
+  background: #999;
+  border-color: #999;
+  color: white;
+}
+.unknown-btn:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.validation-msg {
+  padding: 0 28px 0;
+  display: none;
+}
+.validation-msg.show {
+  display: block;
+}
+.validation-msg .msg-box {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.validation-msg .msg-box.msg-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+.validation-msg .msg-box.msg-warning {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+}
+.validation-msg .msg-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  margin-top: 1px;
+}
+
 .predict-section {
   padding: 16px 28px;
   background: var(--surface-warm);
@@ -756,6 +824,7 @@ body {
                 <div class="toggle-group" data-feature="atcd_fam_yn">
                   <button class="toggle-btn" data-val="0">No</button>
                   <button class="toggle-btn" data-val="1">Yes</button>
+                  <button class="toggle-btn nan-btn" data-val="nan">Unknown</button>
                 </div>
               </div>
             </div>
@@ -790,31 +859,40 @@ body {
           <div class="section-label">Staging & Treatment</div>
           <div class="field-group">
             <div class="field">
-              <label>Cognitive complaints <span class="hint">(MDS-UPDRS I.1, 0–4)</span>
-                <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">MDS-UPDRS 1.1 — Cognitive impairment: memory difficulties, slow thinking, confusion. This is the target variable (prediction: ≥ 2 at follow-up from baseline &lt; 2).</span></span>
+              <label>Baseline cognitive complaints <span class="hint">(MDS-UPDRS I.1, 0–1)</span>
+                <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">MDS-UPDRS 1.1 — Cognitive impairment at baseline. Must be 0 (Normal) or 1 (Slight) since the model predicts future worsening to ≥ 2.</span></span>
               </label>
-              <div class="score-selector" data-feature="tr_cognitif" data-max="4"></div>
-              <div class="severity-legend"><span></span><span>Normal</span><span>Slight</span><span>Mild</span><span>Moderate</span><span>Severe</span></div>
+              <div class="score-selector" data-feature="tr_cognitif" data-max="1"></div>
+              <div class="severity-legend"><span></span><span>Normal</span><span>Slight</span></div>
             </div>
             <div class="field-row">
               <div class="field">
                 <label>Hoehn & Yahr ON
                   <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">Disease stage while ON medication. 0 = asymptomatic, 1 = unilateral, 2 = bilateral, 3 = postural instability, 4 = severe disability, 5 = wheelchair/bedridden.</span></span>
                 </label>
-                <input type="number" id="f_hoehn_yahr_on" min="0" max="5" step="0.5" placeholder="0–5">
+                <div class="input-with-unknown">
+                  <input type="number" id="f_hoehn_yahr_on" min="0" max="5" step="0.5" placeholder="0–5">
+                  <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_hoehn_yahr_on')">Unknown</button>
+                </div>
               </div>
               <div class="field">
                 <label>Hoehn & Yahr OFF
                   <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">Disease stage while OFF medication. Same 0–5 scale as H&Y ON but assessed when dopaminergic medication effect has worn off.</span></span>
                 </label>
-                <input type="number" id="f_hoehn_yahr_off" min="0" max="5" step="0.5" placeholder="0–5">
+                <div class="input-with-unknown">
+                  <input type="number" id="f_hoehn_yahr_off" min="0" max="5" step="0.5" placeholder="0–5">
+                  <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_hoehn_yahr_off')">Unknown</button>
+                </div>
               </div>
             </div>
             <div class="field">
               <label>Total LEDD <span class="hint">(mg/day)</span>
                 <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">Levodopa Equivalent Daily Dose — total dopaminergic medication converted to levodopa-equivalent milligrams per day.</span></span>
               </label>
-              <input type="number" id="f_ttt_ledd_totale" min="0" max="5000" step="10" placeholder="e.g. 600">
+              <div class="input-with-unknown">
+                <input type="number" id="f_ttt_ledd_totale" min="0" max="5000" step="10" placeholder="e.g. 600">
+                <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_ttt_ledd_totale')">Unknown</button>
+              </div>
             </div>
           </div>
         </div>
@@ -843,6 +921,14 @@ body {
       </div>
 
     </div><!-- /form-columns -->
+
+    <!-- Validation -->
+    <div class="validation-msg" id="validationMsg">
+      <div class="msg-box" id="validationBox">
+        <span class="msg-icon" id="validationIcon"></span>
+        <span id="validationText"></span>
+      </div>
+    </div>
 
     <!-- Predict -->
     <div class="predict-section">
@@ -1117,6 +1203,26 @@ function predictProba(features) {
 }
 
 // ============================================================
+// UNKNOWN TOGGLE FOR NUMBER INPUTS
+// ============================================================
+function toggleUnknown(btn, inputId) {
+  const input = document.getElementById(inputId);
+  if (btn.classList.contains('active')) {
+    // switching from Unknown → editable
+    btn.classList.remove('active');
+    input.classList.remove('is-unknown');
+    input.disabled = false;
+    input.focus();
+  } else {
+    // switching to Unknown
+    btn.classList.add('active');
+    input.classList.add('is-unknown');
+    input.value = '';
+    input.disabled = true;
+  }
+}
+
+// ============================================================
 // GATHER INPUTS
 // ============================================================
 function gatherFeatures() {
@@ -1142,7 +1248,12 @@ function gatherFeatures() {
 
   ['age','disease_duration','park_sd_nivetudes','hoehn_yahr_on','hoehn_yahr_off','ttt_ledd_totale','poids'].forEach(f => {
     const el = document.getElementById('f_' + f);
-    if (el && el.value !== '') {
+    if (!el) return;
+    // Check if unknown button is active
+    const unknownBtn = el.parentElement.querySelector('.unknown-btn');
+    if (unknownBtn && unknownBtn.classList.contains('active')) {
+      vals[f] = NaN;
+    } else if (el.value !== '') {
       vals[f] = parseFloat(el.value);
     } else {
       vals[f] = NaN;
@@ -1150,6 +1261,50 @@ function gatherFeatures() {
   });
 
   return vals;
+}
+
+// ============================================================
+// VALIDATION
+// ============================================================
+function validateFeatures(vals) {
+  const msgEl = document.getElementById('validationMsg');
+  const boxEl = document.getElementById('validationBox');
+  const iconEl = document.getElementById('validationIcon');
+  const textEl = document.getElementById('validationText');
+
+  // 1) Check required demographics
+  const requiredDemos = ['age', 'disease_duration', 'park_sd_nivetudes', 'pat_sexe'];
+  const missingDemos = requiredDemos.filter(f => vals[f] === undefined || Number.isNaN(vals[f]));
+  if (missingDemos.length > 0) {
+    const labels = {age:'Age', disease_duration:'Disease Duration', park_sd_nivetudes:'Education', pat_sexe:'Sex'};
+    const names = missingDemos.map(f => labels[f] || f).join(', ');
+    msgEl.classList.add('show');
+    boxEl.className = 'msg-box msg-error';
+    iconEl.textContent = '⛔';
+    textEl.innerHTML = `Please fill the required demographics: <strong>${names}</strong>`;
+    return false;
+  }
+
+  // 2) Check ≥80% of remaining (non-demographic) features
+  const demoSet = new Set(['pat_sexe','age','disease_duration','park_sd_nivetudes']);
+  const otherFeatures = FEATURES_ORDER.filter(f => f !== 'years in the future' && !demoSet.has(f));
+  const filledCount = otherFeatures.filter(f => {
+    const v = vals[f];
+    return v !== undefined && !Number.isNaN(v);
+  }).length;
+  const fillPct = filledCount / otherFeatures.length;
+
+  if (fillPct < 0.8) {
+    const pctStr = Math.round(fillPct * 100);
+    msgEl.classList.add('show');
+    boxEl.className = 'msg-box msg-warning';
+    iconEl.textContent = '⚠️';
+    textEl.innerHTML = `Only <strong>${pctStr}%</strong> of clinical features are filled (${filledCount}/${otherFeatures.length}). For more reliable predictions, try to fill at least 80%. You can still generate a prediction, but results may be less accurate.`;
+    return 'warning';
+  }
+
+  msgEl.classList.remove('show');
+  return true;
 }
 
 function buildFeatureVector(vals, yearsInFuture) {
@@ -1346,6 +1501,10 @@ function runPrediction() {
   if (!MODEL) return;
 
   const vals = gatherFeatures();
+  const valid = validateFeatures(vals);
+  if (valid === false) return; // hard block: missing demographics
+
+  // valid === true or 'warning' → proceed
   lastVals = vals;
 
   const probs = [];
@@ -1385,6 +1544,12 @@ document.addEventListener('DOMContentLoaded', () => {
   buildScoreSelector('sleepFields', SCORE_FIELDS.sleep);
   buildScoreSelector('psychFields', SCORE_FIELDS.psych);
   initScoreSelectors();
+
+  // Init unknown buttons: disable their associated inputs
+  document.querySelectorAll('.unknown-btn.active').forEach(btn => {
+    const input = btn.parentElement.querySelector('input');
+    if (input) { input.classList.add('is-unknown'); input.disabled = true; }
+  });
 
   document.getElementById('shapYearSelect').addEventListener('change', e => {
     runSHAP(parseInt(e.target.value));
