@@ -1318,7 +1318,7 @@ function validateFeatures(vals) {
     return false;
   }
 
-  // 2) Check ≥80% of remaining (non-demographic) features
+  // 2) Check clinical features completeness
   const demoSet = new Set(['pat_sexe','age','disease_duration','park_sd_nivetudes']);
   const otherFeatures = FEATURES_ORDER.filter(f => f !== 'years in the future' && !demoSet.has(f));
   const filledCount = otherFeatures.filter(f => {
@@ -1327,6 +1327,17 @@ function validateFeatures(vals) {
   }).length;
   const fillPct = filledCount / otherFeatures.length;
 
+  // Hard block below 25%
+  if (fillPct < 0.25) {
+    const pctStr = Math.round(fillPct * 100);
+    msgEl.classList.add('show');
+    boxEl.className = 'msg-box msg-error';
+    iconEl.textContent = '⛔';
+    textEl.innerHTML = `Only <strong>${pctStr}%</strong> of clinical features are filled (${filledCount}/${otherFeatures.length}). Please fill at least 25% of clinical variables to generate a prediction.`;
+    return false;
+  }
+
+  // Warning below 80%
   if (fillPct < 0.8) {
     const pctStr = Math.round(fillPct * 100);
     msgEl.classList.add('show');
@@ -1356,121 +1367,128 @@ function buildFeatureVector(vals, yearsInFuture) {
 // ============================================================
 // TreeSHAP (Lundberg et al., "Consistent feature attribution
 // for tree ensembles", 2018, arXiv:1706.06060)
+// Exact path-dependent Shapley values using cover weights.
 // ============================================================
 function treeShapSingle(tree, x, nFeatures) {
   const phi = new Float64Array(nFeatures);
+  const maxD = 32;
+  const pf = new Int32Array(maxD + 2).fill(-2);
+  const pz = new Float64Array(maxD + 2);
+  const po = new Float64Array(maxD + 2);
+  const pw = new Float64Array(maxD + 2);
 
-  function recurse(node, uDepth, pW, pF, pZ, pO) {
-    // Extend path
-    const nW = new Float64Array(uDepth + 1);
-    const nF = new Int32Array(uDepth + 1);
-    const nZ = new Float64Array(uDepth + 1);
-    const nO = new Float64Array(uDepth + 1);
-    for (let i = 0; i < uDepth; i++) { nF[i]=pF[i]; nZ[i]=pZ[i]; nO[i]=pO[i]; }
-    nF[uDepth]=pF[uDepth]; nZ[uDepth]=pZ[uDepth]; nO[uDepth]=pO[uDepth];
-    if (uDepth === 0) { nW[0] = 1; }
-    else {
-      nW[uDepth] = 0;
-      for (let i = uDepth - 1; i >= 0; i--) {
-        nW[i+1] += nO[uDepth] * pW[i] * (i+1) / (uDepth+1);
-        nW[i] = nZ[uDepth] * pW[i] * (uDepth-i) / (uDepth+1);
+  function extend(ud, zf, of_, fi) {
+    pf[ud] = fi; pz[ud] = zf; po[ud] = of_;
+    pw[ud] = (ud === 0) ? 1.0 : 0.0;
+    for (let i = ud - 1; i >= 0; i--) {
+      pw[i+1] += of_ * pw[i] * (i+1) / (ud+1);
+      pw[i] = zf * pw[i] * (ud-i) / (ud+1);
+    }
+  }
+
+  function unwind(ud, idx) {
+    const of_ = po[idx], zf = pz[idx];
+    let nop = pw[ud];
+    if (of_ !== 0) {
+      for (let i = ud-1; i >= 0; i--) {
+        const old = pw[i];
+        pw[i] = nop * (ud+1) / ((i+1) * of_);
+        nop = old - pw[i] * zf * (ud-i) / (ud+1);
+      }
+    } else {
+      for (let i = ud-1; i >= 0; i--) {
+        pw[i] = pw[i] * (ud+1) / (zf * (ud-i));
       }
     }
+    for (let i = idx; i < ud; i++) {
+      pf[i] = pf[i+1]; pz[i] = pz[i+1]; po[i] = po[i+1];
+    }
+  }
 
+  function unwoundSum(ud, idx) {
+    const of_ = po[idx], zf = pz[idx];
+    let nop = pw[ud], total = 0;
+    if (of_ !== 0) {
+      for (let i = ud-1; i >= 0; i--) {
+        const tmp = nop * (ud+1) / ((i+1) * of_);
+        total += tmp;
+        nop = pw[i] - tmp * zf * (ud-i) / (ud+1);
+      }
+    } else {
+      for (let i = ud-1; i >= 0; i--) {
+        total += (pw[i] / zf) * ((ud+1) / (ud-i));
+      }
+    }
+    return total;
+  }
+
+  function save(ud) {
+    return { f: pf.slice(0,ud+1), z: pz.slice(0,ud+1), o: po.slice(0,ud+1), w: pw.slice(0,ud+1) };
+  }
+  function restore(s, ud) {
+    for (let i = 0; i <= ud; i++) { pf[i]=s.f[i]; pz[i]=s.z[i]; po[i]=s.o[i]; pw[i]=s.w[i]; }
+  }
+
+  function recurse(node, ud, pzf, pof, pfi) {
+    extend(ud, pzf, pof, pfi);
     if (tree.l[node] === -1) {
       const lv = tree.w[node];
-      for (let i = 1; i <= uDepth; i++) {
-        const oF = nO[i], zF = nZ[i];
-        let nextO = nW[uDepth], total = 0;
-        for (let j = uDepth - 1; j >= 0; j--) {
-          if (oF !== 0) {
-            const tmp = nextO * (uDepth+1) / ((j+1) * oF);
-            total += tmp;
-            nextO = nW[j] - tmp * zF * (uDepth-j) / (uDepth+1);
-          } else if (zF !== 0) {
-            total += (nW[j] / zF) * ((uDepth+1) / (uDepth-j));
-          }
-        }
-        phi[nF[i]] += total * (oF - zF) * lv;
+      for (let i = 1; i <= ud; i++) {
+        phi[pf[i]] += unwoundSum(ud, i) * (po[i] - pz[i]) * lv;
       }
       return;
     }
-
     const sf = tree.f[node], st = tree.v[node], dl = tree.d[node];
-    const lc = tree.l[node], rc = tree.r[node];
-    const v = x[sf];
+    const lc = tree.l[node], rc = tree.r[node], v = x[sf];
     let hc, cc;
     if (v !== v) { hc = dl ? lc : rc; cc = dl ? rc : lc; }
     else if (v < st) { hc = lc; cc = rc; }
     else { hc = rc; cc = lc; }
-
     const hzf = tree.c[hc] / tree.c[node];
     const czf = tree.c[cc] / tree.c[node];
-
     let di = -1;
-    for (let i = uDepth; i >= 0; i--) { if (nF[i] === sf) { di = i; break; } }
+    for (let i = ud; i >= 0; i--) { if (pf[i] === sf) { di = i; break; } }
 
-    const nd = uDepth + 1;
     if (di >= 0) {
-      const sO = nO[di], sZ = nZ[di];
-      // Unwind duplicate
-      const uw = uDepth - 1;
-      const uwW = new Float64Array(uw + 1);
-      const uwF = new Int32Array(uw + 1);
-      const uwZ = new Float64Array(uw + 1);
-      const uwO = new Float64Array(uw + 1);
-      let wi = 0;
-      for (let i = 0; i <= uDepth; i++) {
-        if (i === di) continue;
-        uwF[wi]=nF[i]; uwZ[wi]=nZ[i]; uwO[wi]=nO[i]; wi++;
-      }
-      uwW[0] = 1;
-      for (let i = 1; i <= uw; i++) {
-        uwW[i] = 0;
-        for (let j = i-1; j >= 0; j--) {
-          uwW[j+1] += uwO[i] * uwW[j] * (j+1) / (i+1);
-          uwW[j] = uwZ[i] * uwW[j] * (i-j) / (i+1);
-        }
-      }
-      // Hot
-      const cf1 = new Int32Array(uw+2); const cz1 = new Float64Array(uw+2); const co1 = new Float64Array(uw+2);
-      for (let i = 0; i <= uw; i++) { cf1[i]=uwF[i]; cz1[i]=uwZ[i]; co1[i]=uwO[i]; }
-      cf1[uw+1]=sf; cz1[uw+1]=hzf*sZ; co1[uw+1]=sO;
-      recurse(hc, uw+1, uwW, cf1, cz1, co1);
-      // Cold
-      const cf2 = new Int32Array(uw+2); const cz2 = new Float64Array(uw+2); const co2 = new Float64Array(uw+2);
-      for (let i = 0; i <= uw; i++) { cf2[i]=uwF[i]; cz2[i]=uwZ[i]; co2[i]=uwO[i]; }
-      cf2[uw+1]=sf; cz2[uw+1]=czf*sZ; co2[uw+1]=0;
-      recurse(cc, uw+1, uwW, cf2, cz2, co2);
+      const sof = po[di], szf = pz[di];
+      const sv = save(ud);
+      unwind(ud, di); ud--;
+      recurse(hc, ud+1, hzf*szf, sof, sf);
+      restore(sv, ud+1); unwind(ud+1, di);
+      recurse(cc, ud+1, czf*szf, 0, sf);
+      restore(sv, ud+1);
     } else {
-      // Hot
-      const cf1 = new Int32Array(nd+1); const cz1 = new Float64Array(nd+1); const co1 = new Float64Array(nd+1);
-      for (let i = 0; i <= uDepth; i++) { cf1[i]=nF[i]; cz1[i]=nZ[i]; co1[i]=nO[i]; }
-      cf1[nd]=sf; cz1[nd]=hzf; co1[nd]=1;
-      recurse(hc, nd, nW, cf1, cz1, co1);
-      // Cold
-      const cf2 = new Int32Array(nd+1); const cz2 = new Float64Array(nd+1); const co2 = new Float64Array(nd+1);
-      for (let i = 0; i <= uDepth; i++) { cf2[i]=nF[i]; cz2[i]=nZ[i]; co2[i]=nO[i]; }
-      cf2[nd]=sf; cz2[nd]=czf; co2[nd]=0;
-      recurse(cc, nd, nW, cf2, cz2, co2);
+      const sv = save(ud);
+      recurse(hc, ud+1, hzf, 1, sf);
+      restore(sv, ud);
+      recurse(cc, ud+1, czf, 0, sf);
+      restore(sv, ud);
     }
   }
 
-  const iF = new Int32Array(1); iF[0] = -1;
-  const iZ = new Float64Array(1); iZ[0] = 1;
-  const iO = new Float64Array(1); iO[0] = 1;
-  const iW = new Float64Array(1); iW[0] = 1;
-  recurse(0, 0, iW, iF, iZ, iO);
+  recurse(0, 0, 1, 1, -2);
   return phi;
 }
 
-function computeTreeSHAP(features) {
+// Async TreeSHAP: process trees in batches to avoid freezing the UI
+async function computeTreeSHAP(features) {
   const n = MODEL.n_features;
   const total = new Float64Array(n);
-  for (const tree of MODEL.trees) {
-    const tp = treeShapSingle(tree, features, n);
-    for (let i = 0; i < n; i++) total[i] += tp[i];
+  const batchSize = 50;
+  const numTrees = MODEL.trees.length;
+
+  for (let b = 0; b < numTrees; b += batchSize) {
+    const end = Math.min(b + batchSize, numTrees);
+    for (let t = b; t < end; t++) {
+      const tp = treeShapSingle(MODEL.trees[t], features, n);
+      for (let i = 0; i < n; i++) total[i] += tp[i];
+    }
+    // Yield to the UI thread between batches
+    if (end < numTrees) {
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
+
   return Array.from(total);
 }
 
@@ -1643,15 +1661,19 @@ function renderRiskTiles(probs) {
 let lastProbs = null;
 let lastVals = null;
 
-function runPrediction() {
+async function runPrediction() {
   if (!MODEL) return;
 
   const vals = gatherFeatures();
   const valid = validateFeatures(vals);
-  if (valid === false) return; // hard block: missing demographics
+  if (valid === false) return;
 
-  // valid === true or 'warning' → proceed
   lastVals = vals;
+
+  const btn = document.getElementById('predictBtn');
+  btn.disabled = true;
+  btn.textContent = 'Computing predictions…';
+  await new Promise(r => setTimeout(r, 50));
 
   const probs = [];
   for (let y = 1; y <= 10; y++) {
@@ -1664,20 +1686,25 @@ function runPrediction() {
   renderRiskTiles(probs);
   renderProbCurve(probs);
 
-  const shapYear = parseInt(document.getElementById('shapYearSelect').value);
-  runSHAP(shapYear);
-
-  ['summaryCard', 'curveCard', 'shapCard'].forEach((id, i) => {
-    setTimeout(() => {
-      document.getElementById(id).classList.add('visible');
-    }, i * 150);
+  ['summaryCard', 'curveCard'].forEach((id, i) => {
+    setTimeout(() => document.getElementById(id).classList.add('visible'), i * 150);
   });
+
+  btn.textContent = 'Computing feature contributions…';
+  await new Promise(r => setTimeout(r, 50));
+
+  const shapYear = parseInt(document.getElementById('shapYearSelect').value);
+  await runSHAP(shapYear);
+  document.getElementById('shapCard').classList.add('visible');
+
+  btn.disabled = false;
+  btn.textContent = 'Generate Risk Trajectory';
 }
 
-function runSHAP(year) {
+async function runSHAP(year) {
   if (!lastVals) return;
   const vec = buildFeatureVector(lastVals, year);
-  const shapVals = computeTreeSHAP(vec);
+  const shapVals = await computeTreeSHAP(vec);
   renderSHAP(shapVals, vec, year);
 }
 
