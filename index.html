@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NS-Park · SCD Risk Predictor</title>
+<title>NS-Park Cognitive Risk Predictor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300;1,9..40,400&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -613,8 +613,10 @@ body {
   letter-spacing: 0.5px;
 }
 
+.risk-summary { flex-wrap: wrap; }
 .risk-explanation {
-  margin-top: 16px;
+  flex: 1 1 100%;
+  margin-top: 4px;
   font-size: 12px;
   line-height: 1.7;
   color: var(--ink-light);
@@ -757,6 +759,69 @@ body {
   text-decoration: none;
 }
 
+/* ── MODEL PICKER ── */
+.model-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.model-option {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.model-option:hover { border-color: var(--accent-light); }
+.model-option:focus-visible { outline: 3px solid rgba(45,106,79,0.3); outline-offset: 2px; }
+.model-option.active {
+  border-color: var(--accent);
+  background: var(--accent-bg-light);
+  box-shadow: 0 0 0 3px rgba(45,106,79,0.08);
+}
+.model-option-top { display: flex; align-items: center; gap: 10px; }
+.model-radio {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--ink-muted); flex-shrink: 0; position: relative;
+}
+.model-option.active .model-radio { border-color: var(--accent); }
+.model-option.active .model-radio::after {
+  content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent);
+}
+.model-name { font-size: 14px; font-weight: 600; }
+.model-status {
+  margin-left: auto; font-size: 10.5px; font-weight: 500; letter-spacing: 0.3px;
+  padding: 2px 8px; border-radius: 10px; background: var(--surface-warm); color: var(--ink-muted);
+}
+.model-status.ready { background: var(--accent-bg); color: var(--accent); }
+.model-status.failed { background: #fef2f2; color: #991b1b; }
+.model-desc { font-size: 12.5px; line-height: 1.5; color: var(--ink-light); }
+.model-stats { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-muted); }
+
+/* Simple-model mode: only the core variables are shown */
+.mode-lr .xgb-only { display: none; }
+.mode-lr .form-columns { grid-template-columns: 1fr; }
+.mode-lr .form-col { border-right: none; }
+.mode-lr .core-section { border-bottom: none; }
+
+.severity-legend.legend-nonan span:first-child { flex: 0 0 34px; }
+
+.model-chip {
+  font-size: 11px; font-weight: 500; color: var(--accent);
+  background: var(--accent-bg-light); border: 1px solid var(--accent-bg);
+  border-radius: 10px; padding: 2px 10px; white-space: nowrap;
+}
+.curve-note { font-size: 11.5px; color: var(--ink-muted); margin-top: 10px; line-height: 1.5; }
+
 /* Responsive */
 @media (max-width: 900px) {
   .container { padding: 16px; }
@@ -767,16 +832,13 @@ body {
   .header h1 { font-size: 18px; }
   .risk-summary { flex-direction: column; }
   .shap-bar-row { grid-template-columns: 120px 1fr 50px; }
+  .model-picker { grid-template-columns: 1fr; padding: 16px; }
+  .form-header, .predict-section { padding-left: 16px; padding-right: 16px; }
+  .field-row { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 <body>
-
-<!-- Loading Screen -->
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="loading-spinner"></div>
-  <p class="loading-text">Loading XGBoost model (≈14 MB)…</p>
-</div>
 
 <!-- Header -->
 <header class="header">
@@ -784,8 +846,8 @@ body {
     <div class="header-brand">
       <div class="header-logo">N</div>
       <div>
-        <h1>NS-Park SCD Risk Predictor</h1>
-        <div class="header-subtitle">Subjective Cognitive Decline in Parkinson's Disease</div>
+        <h1>NS-Park Cognitive Risk Predictor</h1>
+        <div class="header-subtitle">Future cognitive impairment in Parkinson's disease from routine clinical assessments</div>
       </div>
     </div>
     <div class="header-badge">Research Tool</div>
@@ -798,15 +860,37 @@ body {
   <div class="disclaimer">
     <span class="disclaimer-icon">⚠️</span>
     <div>
-      <strong>Research use only.</strong> This tool is based on a predictive model trained on the French NS-Park cohort (n=2,593) and externally validated on PPMI (n=1,467). It is not a certified medical device and should not replace clinical judgment. See <a href="#method">methodology</a> below.
+      <strong>Research use only.</strong> The models were trained on the French NS-Park cohort (2,593 patients) and externally validated on PPMI (993 patients) without retraining. This is not a certified medical device and does not replace clinical judgment or formal cognitive assessment. See <a href="#method">methodology</a> below.
     </div>
   </div>
 
   <!-- ═══════ FORM ═══════ -->
-  <div class="form-panel">
+  <div class="form-panel" id="formPanel">
     <div class="form-header">
       <h2>Patient Clinical Profile</h2>
-      <p>Enter baseline MDS-UPDRS and clinical values · N/A = missing</p>
+      <p>Enter baseline values · N/A = missing</p>
+    </div>
+
+    <!-- Model choice -->
+    <div class="model-picker" role="radiogroup" aria-label="Prediction model">
+      <button type="button" class="model-option active" data-model="xgb" role="radio" aria-checked="true">
+        <span class="model-option-top">
+          <span class="model-radio"></span>
+          <span class="model-name">Full model</span>
+          <span class="model-status" id="xgbStatus">Loading…</span>
+        </span>
+        <span class="model-desc">Gradient boosting (XGBoost) on all 33 routine variables, with probabilities recalibrated (Platt scaling).</span>
+        <span class="model-stats">AUC 0.83 NS-Park · 0.76 PPMI</span>
+      </button>
+      <button type="button" class="model-option" data-model="lr" role="radio" aria-checked="false">
+        <span class="model-option-top">
+          <span class="model-radio"></span>
+          <span class="model-name">Simple model</span>
+          <span class="model-status ready">Ready</span>
+        </span>
+        <span class="model-desc">Logistic regression on 5 variables: age, disease duration, education, baseline item 1.1 and prediction horizon.</span>
+        <span class="model-stats">AUC 0.79 NS-Park · 0.76 PPMI</span>
+      </button>
     </div>
 
     <div class="form-columns">
@@ -814,21 +898,14 @@ body {
       <!-- ── LEFT COLUMN ── -->
       <div class="form-col">
 
-        <!-- Demographics -->
-        <div class="form-section">
-          <div class="section-label">Demographics</div>
+        <!-- Core variables (both models) -->
+        <div class="form-section core-section">
+          <div class="section-label">Core variables <span class="hint">(required · used by both models)</span></div>
           <div class="field-group">
-            <div class="field">
-              <label>Sex</label>
-              <div class="toggle-group" data-feature="pat_sexe">
-                <button class="toggle-btn" data-val="0">Male</button>
-                <button class="toggle-btn" data-val="1">Female</button>
-              </div>
-            </div>
             <div class="field-row">
               <div class="field">
                 <label>Age <span class="hint">(years)</span></label>
-                <input type="number" id="f_age" min="30" max="95" step="0.5" placeholder="e.g. 65">
+                <input type="number" id="f_age" min="30" max="100" step="0.5" placeholder="e.g. 65">
                 <div class="typical-range">Typical in cohort: 64 ± 10 years</div>
               </div>
               <div class="field">
@@ -842,6 +919,29 @@ body {
                 <label>Education <span class="hint">(years of study)</span></label>
                 <input type="number" id="f_park_sd_nivetudes" min="0" max="25" step="1" placeholder="e.g. 12">
                 <div class="typical-range">Typical in cohort: 13 ± 4 years</div>
+              </div>
+              <div class="field">
+                <label>Baseline item 1.1 <span class="hint">(MDS-UPDRS, 0–1)</span>
+                  <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">MDS-UPDRS item 1.1 (cognitive impairment) at baseline. 0 = normal; 1 = slight: cognitive changes noticed only by the patient or caregiver, without interference with daily activities. Must be 0 or 1, since the models predict progression to ≥ 2.</span></span>
+                </label>
+                <div class="score-selector" data-feature="tr_cognitif" data-max="1" data-nonan="1"></div>
+                <div class="severity-legend legend-nonan"><span>Normal</span><span>Slight</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Demographics & history (full model only) -->
+        <div class="form-section xgb-only">
+          <div class="section-label">Demographics &amp; history</div>
+          <div class="field-group">
+            <div class="field-row">
+              <div class="field">
+                <label>Sex <span class="hint">(required)</span></label>
+                <div class="toggle-group" data-feature="pat_sexe">
+                  <button class="toggle-btn" data-val="0">Female</button>
+                  <button class="toggle-btn" data-val="1">Male</button>
+                </div>
               </div>
               <div class="field">
                 <label>Family history of PD</label>
@@ -873,22 +973,15 @@ body {
         </div>
 
         <!-- Motor symptoms -->
-        <div class="form-section">
+        <div class="form-section xgb-only">
           <div class="section-label">Motor Symptoms <span class="hint">(0 = Normal → 4 = Severe)</span></div>
           <div class="field-group" id="motorFields"></div>
         </div>
 
         <!-- Staging & Treatment -->
-        <div class="form-section">
+        <div class="form-section xgb-only">
           <div class="section-label">Staging & Treatment</div>
           <div class="field-group">
-            <div class="field">
-              <label>Baseline cognitive complaints <span class="hint">(MDS-UPDRS I.1, 0–1)</span>
-                <span class="field-info"><span class="info-icon">?</span><span class="info-tooltip">MDS-UPDRS 1.1 — Cognitive impairment at baseline. Must be 0 (Normal) or 1 (Slight) since the model predicts future worsening to ≥ 2.</span></span>
-              </label>
-              <div class="score-selector" data-feature="tr_cognitif" data-max="1"></div>
-              <div class="severity-legend"><span></span><span>Normal</span><span>Slight</span></div>
-            </div>
             <div class="field-row">
               <div class="field">
                 <label>Hoehn & Yahr ON
@@ -898,7 +991,7 @@ body {
                   <input type="number" id="f_hoehn_yahr_on" min="0" max="5" step="0.5" placeholder="0–5">
                   <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_hoehn_yahr_on')">Unknown</button>
                 </div>
-                <div class="typical-range">Typical in cohort: 2.0 ± 0.7</div>
+                <div class="typical-range">Typical in cohort: 2.0 ± 0.7 (12% missing)</div>
               </div>
               <div class="field">
                 <label>Hoehn & Yahr OFF
@@ -908,7 +1001,7 @@ body {
                   <input type="number" id="f_hoehn_yahr_off" min="0" max="5" step="0.5" placeholder="0–5">
                   <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_hoehn_yahr_off')">Unknown</button>
                 </div>
-                <div class="typical-range">Typical in cohort: 2.2 ± 0.9</div>
+                <div class="typical-range">Typical in cohort: 2.2 ± 0.9 (59% missing)</div>
               </div>
             </div>
             <div class="field">
@@ -919,14 +1012,14 @@ body {
                 <input type="number" id="f_ttt_ledd_totale" min="0" max="5000" step="10" placeholder="e.g. 600">
                 <button class="unknown-btn active" onclick="toggleUnknown(this, 'f_ttt_ledd_totale')">Unknown</button>
               </div>
-              <div class="typical-range">Typical in cohort: 440 ± 450 mg/day</div>
+              <div class="typical-range">Typical in cohort: 440 ± 450 mg/day (42% missing)</div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- ── RIGHT COLUMN ── -->
-      <div class="form-col">
+      <div class="form-col xgb-only">
 
         <!-- Non-Motor -->
         <div class="form-section">
@@ -972,6 +1065,7 @@ body {
     <div class="result-card" id="summaryCard">
       <div class="card-header">
         <h3>📊 Risk Summary</h3>
+        <span class="model-chip" id="resultModelChip"></span>
       </div>
       <div class="card-body">
         <div class="risk-summary" id="riskTiles"></div>
@@ -981,12 +1075,13 @@ body {
     <!-- Probability curve -->
     <div class="result-card" id="curveCard">
       <div class="card-header">
-        <h3>📈 SCD Probability Over Time</h3>
+        <h3>📈 Predicted risk over time</h3>
       </div>
       <div class="card-body">
         <div class="curve-container">
           <canvas id="probChart"></canvas>
         </div>
+        <div class="curve-note">Each point is the probability of progressing to item 1.1 ≥ 2 by that horizon. Discrimination was similar up to 5 years and lower beyond (AUC 0.78 NS-Park, 0.64 PPMI), so later points are less reliable.</div>
       </div>
     </div>
 
@@ -995,15 +1090,13 @@ body {
       <div class="card-header">
         <h3>🔍 What is driving this prediction?</h3>
         <select id="shapYearSelect" style="height:30px; border:1px solid var(--border); border-radius:6px; font-family:'DM Sans'; font-size:12px; padding:0 8px; background:white;">
-          <option value="3">at 3 years</option>
+          <option value="2">at 2 years</option>
           <option value="5" selected>at 5 years</option>
           <option value="8">at 8 years</option>
         </select>
       </div>
       <div class="card-body">
-        <div style="font-size:12.5px; line-height:1.6; color:var(--ink-light); margin-bottom:14px; padding:10px 14px; background:var(--surface); border-radius:var(--radius-sm); border:1px solid var(--border);">
-          The chart below shows which clinical features most influence the prediction <em>for this specific patient</em>, computed using exact TreeSHAP values (Lundberg et al., 2020). Each bar represents a feature: <strong style="color:#e07070">red bars</strong> push the risk up, <strong style="color:#5aad8a">green bars</strong> push it down. Longer bars mean a stronger effect. All contributions sum exactly to the difference between this patient's prediction and the population baseline. Features left as "N/A" are excluded from the display.
-        </div>
+        <div id="shapIntro" style="font-size:12.5px; line-height:1.6; color:var(--ink-light); margin-bottom:14px; padding:10px 14px; background:var(--surface); border-radius:var(--radius-sm); border:1px solid var(--border);"></div>
         <div class="shap-base-info" id="shapBaseInfo"></div>
         <div class="shap-container" id="shapContainer"></div>
         <div class="shap-legend">
@@ -1026,13 +1119,13 @@ body {
       </div>
       <div class="card-body">
         <div class="method-note">
-          <strong>Model:</strong> XGBoost classifier (500 trees, max_depth=15, lr=0.01) trained on the NS-Park French real-world cohort (2,593 patients, 21,626 longitudinal segments). Predicts worsening of subjective cognitive decline (MDS-UPDRS Part I.1 ≥ 2 at follow-up, from baseline &lt; 2).<br><br>
-          <strong>Validation:</strong> AUC 0.80 on NS-Park held-out test set; AUC 0.73 on external PPMI cohort (n=1,467).<br><br>
-          <strong>Feature contributions:</strong> The "What is driving this prediction?" chart displays exact SHAP (SHapley Additive exPlanations) values computed using the <em>TreeSHAP</em> algorithm (Lundberg et al., "From local explanations to global understanding with explainable AI for trees", Nature Machine Intelligence, 2020). TreeSHAP exploits the tree structure to compute Shapley values in polynomial time: each feature's contribution is its average marginal effect across all possible orderings of features, weighted by the training data distribution at each tree node. Unlike simpler perturbation methods, TreeSHAP guarantees <strong>additivity</strong> — contributions sum exactly to the difference between the prediction and the population baseline — as well as consistency and local accuracy. Features marked as N/A are excluded from the chart display. Computation runs entirely in-browser in JavaScript (~1 second per prediction for 500 trees).<br><br>
-          <strong>Missing data:</strong> The XGBoost model natively handles missing values by learning optimal default split directions during training — when a feature is unknown, the model follows the path that was most common for missing values in the training data. This is a built-in capability of XGBoost (Chen & Guestrin, "XGBoost: A Scalable Tree Boosting System", KDD 2016).<br><br>
-          <strong>Risk thresholds:</strong> Low risk (&lt; 25%), Moderate (25–50%), and Elevated (&gt; 50%) are indicative categories to aid interpretation. They are not clinically validated cut-offs.<br><br>
-          <strong>Privacy:</strong> All computation runs entirely in your browser. No patient data is transmitted to any server.<br><br>
-          <strong>Reference:</strong> Louiset et al., "Risk stratification of future subjective cognitive decline in Parkinson's disease using large-scale real-world routine clinical data" (2026).
+          <strong>Outcome:</strong> progression from MDS-UPDRS item 1.1 ≤ 1 (no or only subjective cognitive complaints) to ≥ 2 (clinically evident cognitive impairment), at a given prediction horizon. Both models were trained on the NS-Park cohort (2,593 patients; 21,626 pairs of visits more than one year apart, the earlier visit giving the predictors and the interval the horizon) and applied to PPMI (993 patients) without retraining or recalibration.<br><br>
+          <strong>Full model:</strong> XGBoost classifier (500 trees, depth 15, learning rate 0.01) using all 33 routine variables plus the horizon. Because progressing pairs were up-weighted during training, outputs are recalibrated with Platt scaling fitted on out-of-fold training predictions: p = 1 / (1 + exp(−(−1.2515 + 0.4857 × logit(p<sub>raw</sub>)))). AUC 0.83 (95% CI 0.80–0.86) in the NS-Park test set and 0.76 (0.73–0.79) in PPMI; 0.79 in PPMI patients with ≤ 5 years of disease duration. Missing values follow the default branch learned by XGBoost for each split (Chen &amp; Guestrin, KDD 2016).<br><br>
+          <strong>Simple model:</strong> logistic regression on age, disease duration, education, baseline item 1.1 and horizon (median imputation with missingness indicators, standardisation). AUC 0.79 (0.75–0.83) in NS-Park and 0.76 (0.73–0.79) in PPMI. It performed as well as the full model externally, so most of the predictive information is carried by these few variables.<br><br>
+          <strong>Feature contributions:</strong> for the full model, exact path-dependent SHAP values computed in the browser with the TreeSHAP algorithm (Lundberg et al., Nature Machine Intelligence 2020), multiplied by the Platt slope so that they are expressed on the same calibrated log-odds scale as the displayed risk. For the simple model, each variable's contribution is its term in the regression equation (coefficient × standardised value), which is its exact SHAP value for a linear model (Lundberg &amp; Lee, NeurIPS 2017). In both cases contributions add up exactly to the patient's log-odds minus the model's reference value. The prediction horizon is used by both models but not shown in the chart.<br><br>
+          <strong>Risk threshold:</strong> 22% is the threshold on calibrated probabilities used in the paper for the full model (equivalent to 0.5 before recalibration; sensitivity 0.79, specificity 0.73 in NS-Park). It is close to the overall progression rate in NS-Park (20.9% of visit pairs) and is shown for both models as a reference point, not as a clinically validated cut-off. In PPMI, predicted risks were on average lower than observed (17% vs 28%), so estimates are best read in relative terms in new populations.<br><br>
+          <strong>Privacy:</strong> all computation runs in your browser. No patient data is sent anywhere.<br><br>
+          <strong>Reference:</strong> Louiset R, et al. Predicting Future Cognitive Impairment in Parkinson's Disease From Routine Clinical Assessments. 2026.
         </div>
       </div>
     </div>
@@ -1041,8 +1134,8 @@ body {
 
 <footer class="footer">
   <p>
-    NS-Park SCD Predictor · Built for research use<br>
-    <a href="https://github.com" target="_blank">View on GitHub</a> · Based on the NS-Park / F-CRIN Network
+    NS-Park Cognitive Risk Predictor · Built for research use<br>
+    <a href="https://github.com/rlouiset/nspark-scd-predictor" target="_blank" rel="noopener">View on GitHub</a> · Based on the NS-Park / F-CRIN Network
   </p>
 </footer>
 
@@ -1072,7 +1165,7 @@ const FEATURE_LABELS = {
   apathie:"Apathy", depression:"Depression", anxiete:"Anxiety",
   halluc_psy:"Hallucinations/Psychosis", tci:"Impulse Control Dis.",
   add_ldopa:"Dopaminergic Addiction", punding:"Punding",
-  diag_symptc1:"Onset Side (L/R)", tr_cognitif:"Cognitive Complaints",
+  diag_symptc1:"Onset Side", tr_cognitif:"Baseline Item 1.1",
   hoehn_yahr_on:"Hoehn & Yahr ON", hoehn_yahr_off:"Hoehn & Yahr OFF",
   ttt_ledd_totale:"Total LEDD (mg/day)", "years in the future":"Prediction Horizon"
 };
@@ -1092,7 +1185,7 @@ const SCORE_FIELDS = {
     {id:"hypotension", label:"Orthostatic hypotension", max:4, desc:"MDS-UPDRS 1.12 — Drop in blood pressure when standing up, causing dizziness, lightheadedness, or fainting. 0 = never, 4 = frequently causes falls or fainting."},
     {id:"digestif", label:"Gastrointestinal symptoms", max:4, desc:"MDS-UPDRS 1.11 — Constipation, bloating, nausea, or difficulty with bowel movements. 0 = none, 4 = requires regular use of laxatives or interventions."},
     {id:"urine", label:"Urinary symptoms", max:4, desc:"MDS-UPDRS 1.10 — Urinary urgency (sudden need to urinate), increased frequency, or incontinence. 0 = none, 4 = requires a catheter."},
-    {id:"poids", label:"Weight", type:"number", min:30, max:180, step:1, placeholder:"kg", desc:"Patient's body weight in kilograms. Typical in cohort: 74 ± 17 kg."},
+    {id:"poids", label:"Weight", type:"number", min:30, max:180, step:1, placeholder:"kg", desc:"Patient's body weight in kilograms. Typical in cohort: 75 ± 16 kg (53% missing)."},
   ],
   sleep: [
     {id:"rbd", label:"REM sleep behavior disorder", max:1, desc:"Acting out dreams during REM sleep — kicking, punching, shouting, or falling out of bed. Often precedes Parkinson's motor symptoms by years. 0 = absent, 1 = present."},
@@ -1110,8 +1203,6 @@ const SCORE_FIELDS = {
   ]
 };
 
-// Median values from the cohort (for SHAP baseline)
-const MEDIANS = [1,65.583,8,12,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,71.5,0,0,0,1,0,0,0,0,1,0,2,3,399.88,5];
 
 // ============================================================
 // BUILD FORM FIELDS
@@ -1154,12 +1245,14 @@ function buildScoreSelector(containerId, fields) {
 function initScoreSelectors() {
   document.querySelectorAll('.score-selector').forEach(sel => {
     const max = parseInt(sel.dataset.max);
-    const nanBtn = document.createElement('button');
-    nanBtn.className = 'score-btn nan-btn active';
-    nanBtn.textContent = 'N/A';
-    nanBtn.dataset.val = 'nan';
-    nanBtn.onclick = () => selectScore(sel, 'nan');
-    sel.appendChild(nanBtn);
+    if (!sel.dataset.nonan) {   // required items (data-nonan) have no N/A option
+      const nanBtn = document.createElement('button');
+      nanBtn.className = 'score-btn nan-btn active';
+      nanBtn.textContent = 'N/A';
+      nanBtn.dataset.val = 'nan';
+      nanBtn.onclick = () => selectScore(sel, 'nan');
+      sel.appendChild(nanBtn);
+    }
     for (let i = 0; i <= max; i++) {
       const btn = document.createElement('button');
       btn.className = 'score-btn';
@@ -1187,52 +1280,211 @@ function selectScore(selector, val) {
 }
 
 // ============================================================
-// MODEL
+// MODELS
 // ============================================================
-let MODEL = null;
+const MODEL_VERSION = '2026-10';   // change when model.json changes, to bypass browser/CDN caches
+const RISK_THRESHOLD = 0.22;       // calibrated threshold used in the paper (= 0.5 before Platt scaling)
+let MODEL = null;                  // full model (XGBoost + Platt), fetched in the background
+let modelPromise = null;
+let currentModel = 'xgb';
 
-async function loadModel() {
-  try {
-    const resp = await fetch('model.json');
-    MODEL = await resp.json();
-    console.log(`Model loaded: ${MODEL.trees.length} trees`);
-    document.getElementById('loadingOverlay').classList.add('hidden');
-  } catch (e) {
-    console.error('Model load failed:', e);
-    document.querySelector('.loading-text').textContent = 'Failed to load model. Please refresh.';
+// Simple model: 5-variable logistic regression exported from nspark_lr_model.pkl
+// (SimpleImputer(median, add_indicator) -> StandardScaler -> LogisticRegression).
+// Columns: the 5 imputed variables, then missingness indicators for disease duration and education.
+const LR_MODEL = {"features": ["age", "disease_duration", "park_sd_nivetudes", "tr_cognitif", "years in the future"], "impute_median": [64.66666666666667, 8.0, 12.0, 0.0, 3.25], "indicator_of": [1, 2], "mean": [63.80289006231285, 8.6285506190823, 12.447195921340132, 0.21746783199805778, 3.6723820506595457, 0.0006069434328720563, 0.3315731973780044], "scale": [9.738859295520655, 6.550162806099056, 3.117383268784739, 0.4125234224188032, 2.042701872364162, 0.02462874443696531, 0.4707785170953867], "coef": [0.4911255022307348, 0.2626571323452543, -0.1457446347882146, 0.4035785043692328, 0.6401931809220356, -0.09976471804674603, -0.09600891844201141], "intercept": -1.5247758133477132};
+
+const MODEL_INFO = {
+  xgb: { short: 'Full model · XGBoost' },
+  lr:  { short: 'Simple model · logistic regression' }
+};
+
+// ============================================================
+// PREDICTION ENGINE — pure functions, no DOM access.
+// Shared by the web page and the Node validation harness.
+// ============================================================
+const Engine = (() => {
+  const sigmoid = x => 1 / (1 + Math.exp(-x));
+  const isMissing = v => v === null || v === undefined || Number.isNaN(v);
+
+  // ---------- XGBoost (gradient-boosted trees) ----------
+  function treeLeaf(tree, x) {
+    let n = 0;
+    while (tree.l[n] !== -1) {
+      const v = x[tree.f[n]];
+      if (isMissing(v)) n = tree.d[n] ? tree.l[n] : tree.r[n];
+      else n = v < tree.v[n] ? tree.l[n] : tree.r[n];
+    }
+    return tree.w[n];
   }
-}
 
-function sigmoid(x) { return 1.0 / (1.0 + Math.exp(-x)); }
+  // Raw margin (log-odds before recalibration)
+  function xgbMargin(model, x) {
+    let s = model.base_score_logodds;
+    for (const t of model.trees) s += treeLeaf(t, x);
+    return s;
+  }
 
-function predictTree(tree, features) {
-  let node = 0;
-  while (tree.l[node] !== -1) {
-    const featIdx = tree.f[node];
-    const threshold = tree.v[node];
-    const val = features[featIdx];
-    if (val === null || val === undefined || Number.isNaN(val)) {
-      node = tree.d[node] ? tree.l[node] : tree.r[node];
-    } else if (val < threshold) {
-      node = tree.l[node];
-    } else {
-      node = tree.r[node];
+  // Platt recalibration, as in the paper:
+  // p_cal = sigmoid(a + b * logit(p_raw)), logit(p_raw) clipped as in the notebook
+  const LOGIT_CLIP = Math.log((1 - 1e-6) / 1e-6);
+  function xgbCalibratedLogit(model, margin) {
+    const m = Math.max(-LOGIT_CLIP, Math.min(LOGIT_CLIP, margin));
+    return model.platt.a + model.platt.b * m;
+  }
+  function xgbProba(model, x) {
+    return sigmoid(xgbCalibratedLogit(model, xgbMargin(model, x)));
+  }
+
+  // ---------- TreeSHAP (path-dependent) ----------
+  // Port of Algorithm 2 in Lundberg et al. (2020, Nat Mach Intell), following
+  // the structure of the shap library's C++ tree_shap_recursive: each recursion
+  // level works on its own copy of the path, stored right after its parent's.
+  const BUF = 2048; // >= (maxDepth+2)(maxDepth+3)/2 for depth <= 60
+  const pF = new Int32Array(BUF), pZ = new Float64Array(BUF),
+        pO = new Float64Array(BUF), pW = new Float64Array(BUF);
+
+  function extendPath(b, ud, zf, of, fi) {
+    pF[b + ud] = fi; pZ[b + ud] = zf; pO[b + ud] = of; pW[b + ud] = ud === 0 ? 1 : 0;
+    for (let i = ud - 1; i >= 0; i--) {
+      pW[b + i + 1] += of * pW[b + i] * (i + 1) / (ud + 1);
+      pW[b + i] = zf * pW[b + i] * (ud - i) / (ud + 1);
     }
   }
-  return tree.w[node];
-}
-
-function predictRaw(features) {
-  let raw = 0;
-  for (const tree of MODEL.trees) {
-    raw += predictTree(tree, features);
+  function unwindPath(b, ud, pi) {
+    const of = pO[b + pi], zf = pZ[b + pi];
+    let next = pW[b + ud];
+    for (let i = ud - 1; i >= 0; i--) {
+      if (of !== 0) {
+        const tmp = pW[b + i];
+        pW[b + i] = next * (ud + 1) / ((i + 1) * of);
+        next = tmp - pW[b + i] * zf * (ud - i) / (ud + 1);
+      } else {
+        pW[b + i] = pW[b + i] * (ud + 1) / (zf * (ud - i));
+      }
+    }
+    for (let i = pi; i < ud; i++) {
+      pF[b + i] = pF[b + i + 1]; pZ[b + i] = pZ[b + i + 1]; pO[b + i] = pO[b + i + 1];
+    }
   }
-  raw += MODEL.base_score_logodds;
-  return raw;
+  function unwoundPathSum(b, ud, pi) {
+    const of = pO[b + pi], zf = pZ[b + pi];
+    let next = pW[b + ud], total = 0;
+    if (of !== 0) {
+      for (let i = ud - 1; i >= 0; i--) {
+        const tmp = next * (ud + 1) / ((i + 1) * of);
+        total += tmp;
+        next = pW[b + i] - tmp * zf * (ud - i) / (ud + 1);
+      }
+    } else if (zf !== 0) {
+      for (let i = ud - 1; i >= 0; i--) total += pW[b + i] * (ud + 1) / (zf * (ud - i));
+    }
+    return total;
+  }
+
+  function treeShapRec(tree, x, phi, node, parentB, ud, pzf, pof, pfi) {
+    const b = parentB + ud + 1;              // this level's path segment
+    for (let i = 0; i <= ud; i++) {          // copy parent path
+      pF[b + i] = pF[parentB + i]; pZ[b + i] = pZ[parentB + i];
+      pO[b + i] = pO[parentB + i]; pW[b + i] = pW[parentB + i];
+    }
+    extendPath(b, ud, pzf, pof, pfi);
+
+    if (tree.l[node] === -1) {
+      const leaf = tree.w[node];
+      for (let i = 1; i <= ud; i++) {
+        phi[pF[b + i]] += unwoundPathSum(b, ud, i) * (pO[b + i] - pZ[b + i]) * leaf;
+      }
+      return;
+    }
+    const sf = tree.f[node], v = x[sf], lc = tree.l[node], rc = tree.r[node];
+    let hot, cold;
+    if (isMissing(v)) { hot = tree.d[node] ? lc : rc; }
+    else { hot = v < tree.v[node] ? lc : rc; }
+    cold = hot === lc ? rc : lc;
+    const w = tree.c[node];
+    const hotZ = tree.c[hot] / w, coldZ = tree.c[cold] / w;
+
+    let inZ = 1, inO = 1, pi = -1;
+    for (let i = 0; i <= ud; i++) if (pF[b + i] === sf) { pi = i; break; }
+    if (pi >= 0) {
+      inZ = pZ[b + pi]; inO = pO[b + pi];
+      unwindPath(b, ud, pi);
+      ud -= 1;
+    }
+    treeShapRec(tree, x, phi, hot, b, ud + 1, hotZ * inZ, inO, sf);
+    treeShapRec(tree, x, phi, cold, b, ud + 1, coldZ * inZ, 0, sf);
+  }
+
+  function treeShapOne(tree, x, phi) {
+    pF[0] = -1; pZ[0] = 1; pO[0] = 1; pW[0] = 1;
+    treeShapRec(tree, x, phi, 0, 0, 0, 1, 1, -1);
+  }
+
+  // SHAP values on the raw margin scale, for trees [from, to)
+  function xgbShapRange(model, x, from, to, phi) {
+    for (let t = from; t < to; t++) treeShapOne(model.trees[t], x, phi);
+    return phi;
+  }
+
+  // Expected raw margin over the training distribution (cover-weighted)
+  function xgbExpectedMargin(model) {
+    let s = model.base_score_logodds;
+    for (const t of model.trees) {
+      let acc = 0;
+      for (let i = 0; i < t.l.length; i++) if (t.l[i] === -1) acc += t.w[i] * t.c[i];
+      s += acc / t.c[0];
+    }
+    return s;
+  }
+
+  // ---------- 5-variable logistic regression ----------
+  // Pipeline: SimpleImputer(median, add_indicator) -> StandardScaler -> LogisticRegression
+  function lrColumns(lr, x5) {
+    const cols = x5.map((v, j) => isMissing(v) ? lr.impute_median[j] : v);
+    for (const j of lr.indicator_of) cols.push(isMissing(x5[j]) ? 1 : 0);
+    return cols;
+  }
+  // Exact additive decomposition of the logit: intercept + sum of per-variable terms.
+  // Missingness-indicator terms are grouped with their variable.
+  function lrContributions(lr, x5) {
+    const cols = lrColumns(lr, x5);
+    const term = c => lr.coef[c] * (cols[c] - lr.mean[c]) / lr.scale[c];
+    const contrib = x5.map((_, j) => term(j));
+    lr.indicator_of.forEach((j, k) => { contrib[j] += term(x5.length + k); });
+    return contrib;
+  }
+  function lrLogit(lr, x5) {
+    return lr.intercept + lrContributions(lr, x5).reduce((a, b) => a + b, 0);
+  }
+  function lrProba(lr, x5) { return sigmoid(lrLogit(lr, x5)); }
+
+  return { sigmoid, xgbMargin, xgbCalibratedLogit, xgbProba, xgbShapRange,
+           xgbExpectedMargin, lrContributions, lrLogit, lrProba };
+})();
+
+function loadModel() {
+  const status = document.getElementById('xgbStatus');
+  modelPromise = fetch('model.json?v=' + MODEL_VERSION)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(m => {
+      if (!m.platt || !m.trees || !m.trees[0].c) throw new Error('model.json is outdated (no calibration or cover values)');
+      MODEL = m;
+      status.textContent = 'Ready';
+      status.className = 'model-status ready';
+      return m;
+    })
+    .catch(e => {
+      console.error('Model load failed:', e);
+      status.textContent = 'Failed to load';
+      status.className = 'model-status failed';
+      throw e;
+    });
+  modelPromise.catch(() => {});
 }
 
-function predictProba(features) {
-  return sigmoid(predictRaw(features));
+function predictRisk(model, vals, year) {
+  if (model === 'lr') return Engine.lrProba(LR_MODEL, lrVector(vals, year));
+  return Engine.xgbProba(MODEL, buildFeatureVector(vals, year));
 }
 
 // ============================================================
@@ -1299,210 +1551,140 @@ function gatherFeatures() {
 // ============================================================
 // VALIDATION
 // ============================================================
-function validateFeatures(vals) {
+const CORE_FEATURES = ['age', 'disease_duration', 'park_sd_nivetudes', 'tr_cognitif'];
+const XGB_REQUIRED = [...CORE_FEATURES, 'pat_sexe'];
+const REQUIRED_LABELS = {
+  age: 'Age', disease_duration: 'Disease duration', park_sd_nivetudes: 'Education',
+  tr_cognitif: 'Baseline item 1.1', pat_sexe: 'Sex'
+};
+const isNA = v => v === undefined || v === null || Number.isNaN(v);
+
+function showMessage(kind, html) {
   const msgEl = document.getElementById('validationMsg');
-  const boxEl = document.getElementById('validationBox');
-  const iconEl = document.getElementById('validationIcon');
-  const textEl = document.getElementById('validationText');
+  if (!kind) { msgEl.classList.remove('show'); return; }
+  msgEl.classList.add('show');
+  document.getElementById('validationBox').className = 'msg-box ' + (kind === 'error' ? 'msg-error' : 'msg-warning');
+  document.getElementById('validationIcon').textContent = kind === 'error' ? '⛔' : '⚠️';
+  document.getElementById('validationText').innerHTML = html;
+}
 
-  // 1) Check required demographics
-  const requiredDemos = ['age', 'disease_duration', 'park_sd_nivetudes', 'pat_sexe'];
-  const missingDemos = requiredDemos.filter(f => vals[f] === undefined || Number.isNaN(vals[f]));
-  if (missingDemos.length > 0) {
-    const labels = {age:'Age', disease_duration:'Disease Duration', park_sd_nivetudes:'Education', pat_sexe:'Sex'};
-    const names = missingDemos.map(f => labels[f] || f).join(', ');
-    msgEl.classList.add('show');
-    boxEl.className = 'msg-box msg-error';
-    iconEl.textContent = '⛔';
-    textEl.innerHTML = `Please fill the required demographics: <strong>${names}</strong>`;
+// Returns false (blocked), 'warning' (allowed with a warning) or true
+function validateFeatures(vals, model) {
+  const required = model === 'xgb' ? XGB_REQUIRED : CORE_FEATURES;
+  const missing = required.filter(f => isNA(vals[f]));
+  if (missing.length) {
+    showMessage('error', `Please fill the required variables: <strong>${missing.map(f => REQUIRED_LABELS[f]).join(', ')}</strong>.`);
     return false;
   }
-
-  // 2) Check clinical features completeness
-  const demoSet = new Set(['pat_sexe','age','disease_duration','park_sd_nivetudes']);
-  const otherFeatures = FEATURES_ORDER.filter(f => f !== 'years in the future' && !demoSet.has(f));
-  const filledCount = otherFeatures.filter(f => {
-    const v = vals[f];
-    return v !== undefined && !Number.isNaN(v);
-  }).length;
-  const fillPct = filledCount / otherFeatures.length;
-
-  // Hard block below 25%
-  if (fillPct < 0.25) {
-    const pctStr = Math.round(fillPct * 100);
-    msgEl.classList.add('show');
-    boxEl.className = 'msg-box msg-error';
-    iconEl.textContent = '⛔';
-    textEl.innerHTML = `Only <strong>${pctStr}%</strong> of clinical features are filled (${filledCount}/${otherFeatures.length}). Please fill at least 25% of clinical variables to generate a prediction.`;
+  if (vals.age <= 30 || vals.age > 100) {
+    showMessage('error', 'Age must be above 30 and at most 100 years (the models were trained on patients older than 30).');
     return false;
   }
+  if (vals.disease_duration < 0 || vals.disease_duration >= vals.age) {
+    showMessage('error', 'Disease duration must be zero or more and smaller than the age.');
+    return false;
+  }
+  if (vals.park_sd_nivetudes < 0 || vals.park_sd_nivetudes > 30) {
+    showMessage('error', 'Education must be between 0 and 30 years of study.');
+    return false;
+  }
+  if (model === 'lr') { showMessage(null); return true; }
 
-  // Warning below 80%
-  if (fillPct < 0.8) {
-    const pctStr = Math.round(fillPct * 100);
-    msgEl.classList.add('show');
-    boxEl.className = 'msg-box msg-warning';
-    iconEl.textContent = '⚠️';
-    textEl.innerHTML = `Only <strong>${pctStr}%</strong> of clinical features are filled (${filledCount}/${otherFeatures.length}). For more reliable predictions, try to fill at least 80%. You can still generate a prediction, but results may be less accurate.`;
+  // Completeness of the other variables, full model only
+  const others = FEATURES_ORDER.filter(f => f !== 'years in the future' && !XGB_REQUIRED.includes(f));
+  const filled = others.filter(f => !isNA(vals[f])).length;
+  const pct = filled / others.length;
+  const pctStr = Math.round(pct * 100);
+  if (pct < 0.25) {
+    showMessage('error', `Only <strong>${pctStr}%</strong> of the other clinical variables are filled (${filled}/${others.length}). Fill at least 25% to use the full model, or switch to the simple model, which only needs the core variables.`);
+    return false;
+  }
+  if (pct < 0.8) {
+    showMessage('warning', `Only <strong>${pctStr}%</strong> of the other clinical variables are filled (${filled}/${others.length}). The prediction is shown, but it is more reliable with at least 80% filled.`);
     return 'warning';
   }
-
-  msgEl.classList.remove('show');
+  showMessage(null);
   return true;
 }
 
 function buildFeatureVector(vals, yearsInFuture) {
-  const vec = [];
-  for (let i = 0; i < FEATURES_ORDER.length; i++) {
-    const fname = FEATURES_ORDER[i];
-    if (fname === 'years in the future') {
-      vec.push(yearsInFuture);
-    } else {
-      vec.push(vals[fname] !== undefined ? vals[fname] : NaN);
-    }
-  }
-  return vec;
+  return FEATURES_ORDER.map(f => f === 'years in the future' ? yearsInFuture : (isNA(vals[f]) ? NaN : vals[f]));
+}
+
+function lrVector(vals, year) {
+  return [vals.age, vals.disease_duration, vals.park_sd_nivetudes, vals.tr_cognitif, year];
 }
 
 // ============================================================
-// TreeSHAP (Lundberg et al., "Consistent feature attribution
-// for tree ensembles", 2018, arXiv:1706.06060)
-// Exact path-dependent Shapley values using cover weights.
+// FEATURE CONTRIBUTIONS
 // ============================================================
-function treeShapSingle(tree, x, nFeatures) {
-  const phi = new Float64Array(nFeatures);
-  const maxD = 32;
-  const pf = new Int32Array(maxD + 2).fill(-2);
-  const pz = new Float64Array(maxD + 2);
-  const po = new Float64Array(maxD + 2);
-  const pw = new Float64Array(maxD + 2);
-
-  function extend(ud, zf, of_, fi) {
-    pf[ud] = fi; pz[ud] = zf; po[ud] = of_;
-    pw[ud] = (ud === 0) ? 1.0 : 0.0;
-    for (let i = ud - 1; i >= 0; i--) {
-      pw[i+1] += of_ * pw[i] * (i+1) / (ud+1);
-      pw[i] = zf * pw[i] * (ud-i) / (ud+1);
-    }
+// Full model: TreeSHAP on the raw margin, multiplied by the Platt slope b so that the
+// values are on the calibrated log-odds scale (calibrated logit = a + b * margin).
+// Trees are processed in batches so the page stays responsive.
+async function computeContributions(model, vals, year) {
+  if (model === 'lr') {
+    const x5 = lrVector(vals, year);
+    return { names: LR_MODEL.features, values: Engine.lrContributions(LR_MODEL, x5), inputs: x5 };
   }
-
-  function unwind(ud, idx) {
-    const of_ = po[idx], zf = pz[idx];
-    let nop = pw[ud];
-    if (of_ !== 0) {
-      for (let i = ud-1; i >= 0; i--) {
-        const old = pw[i];
-        pw[i] = nop * (ud+1) / ((i+1) * of_);
-        nop = old - pw[i] * zf * (ud-i) / (ud+1);
-      }
-    } else {
-      for (let i = ud-1; i >= 0; i--) {
-        pw[i] = pw[i] * (ud+1) / (zf * (ud-i));
-      }
-    }
-    for (let i = idx; i < ud; i++) {
-      pf[i] = pf[i+1]; pz[i] = pz[i+1]; po[i] = po[i+1];
-    }
+  const x = buildFeatureVector(vals, year);
+  const phi = new Float64Array(MODEL.n_features);
+  const batch = 50;
+  for (let t = 0; t < MODEL.trees.length; t += batch) {
+    Engine.xgbShapRange(MODEL, x, t, Math.min(t + batch, MODEL.trees.length), phi);
+    await new Promise(r => setTimeout(r, 0));
   }
-
-  function unwoundSum(ud, idx) {
-    const of_ = po[idx], zf = pz[idx];
-    let nop = pw[ud], total = 0;
-    if (of_ !== 0) {
-      for (let i = ud-1; i >= 0; i--) {
-        const tmp = nop * (ud+1) / ((i+1) * of_);
-        total += tmp;
-        nop = pw[i] - tmp * zf * (ud-i) / (ud+1);
-      }
-    } else {
-      for (let i = ud-1; i >= 0; i--) {
-        total += (pw[i] / zf) * ((ud+1) / (ud-i));
-      }
-    }
-    return total;
-  }
-
-  function save(ud) {
-    return { f: pf.slice(0,ud+1), z: pz.slice(0,ud+1), o: po.slice(0,ud+1), w: pw.slice(0,ud+1) };
-  }
-  function restore(s, ud) {
-    for (let i = 0; i <= ud; i++) { pf[i]=s.f[i]; pz[i]=s.z[i]; po[i]=s.o[i]; pw[i]=s.w[i]; }
-  }
-
-  function recurse(node, ud, pzf, pof, pfi) {
-    extend(ud, pzf, pof, pfi);
-    if (tree.l[node] === -1) {
-      const lv = tree.w[node];
-      for (let i = 1; i <= ud; i++) {
-        phi[pf[i]] += unwoundSum(ud, i) * (po[i] - pz[i]) * lv;
-      }
-      return;
-    }
-    const sf = tree.f[node], st = tree.v[node], dl = tree.d[node];
-    const lc = tree.l[node], rc = tree.r[node], v = x[sf];
-    let hc, cc;
-    if (v !== v) { hc = dl ? lc : rc; cc = dl ? rc : lc; }
-    else if (v < st) { hc = lc; cc = rc; }
-    else { hc = rc; cc = lc; }
-    const hzf = tree.c[hc] / tree.c[node];
-    const czf = tree.c[cc] / tree.c[node];
-    let di = -1;
-    for (let i = ud; i >= 0; i--) { if (pf[i] === sf) { di = i; break; } }
-
-    if (di >= 0) {
-      const sof = po[di], szf = pz[di];
-      const sv = save(ud);
-      unwind(ud, di); ud--;
-      recurse(hc, ud+1, hzf*szf, sof, sf);
-      restore(sv, ud+1); unwind(ud+1, di);
-      recurse(cc, ud+1, czf*szf, 0, sf);
-      restore(sv, ud+1);
-    } else {
-      const sv = save(ud);
-      recurse(hc, ud+1, hzf, 1, sf);
-      restore(sv, ud);
-      recurse(cc, ud+1, czf, 0, sf);
-      restore(sv, ud);
-    }
-  }
-
-  recurse(0, 0, 1, 1, -2);
-  return phi;
+  return { names: FEATURES_ORDER, values: Array.from(phi, v => v * MODEL.platt.b), inputs: x };
 }
 
-// Async TreeSHAP: process trees in batches to avoid freezing the UI
-async function computeTreeSHAP(features) {
-  const n = MODEL.n_features;
-  const total = new Float64Array(n);
-  const batchSize = 50;
-  const numTrees = MODEL.trees.length;
+const VALUE_TEXT = {
+  pat_sexe: ['Female', 'Male'], atcd_fam_yn: ['No', 'Yes'], diag_lateralite: ['Left', 'Right'],
+  diag_symptc1: ['Right', 'Left'], rbd: ['No', 'Yes'], sjsr: ['No', 'Yes']
+};
+function formatValue(key, v) {
+  if (VALUE_TEXT[key] && VALUE_TEXT[key][v] !== undefined) return VALUE_TEXT[key][v];
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
 
-  for (let b = 0; b < numTrees; b += batchSize) {
-    const end = Math.min(b + batchSize, numTrees);
-    for (let t = b; t < end; t++) {
-      const tp = treeShapSingle(MODEL.trees[t], features, n);
-      for (let i = 0; i < n; i++) total[i] += tp[i];
-    }
-    // Yield to the UI thread between batches
-    if (end < numTrees) {
-      await new Promise(r => setTimeout(r, 0));
-    }
-  }
+const SHAP_INTRO = {
+  xgb: 'Which variables push this patient\'s predicted risk up or down at the selected horizon. Bars are exact TreeSHAP contributions (Lundberg et al., 2020) on the calibrated log-odds scale: <strong style="color:#c0504d">red</strong> increases the risk, <strong style="color:#3d8b68">green</strong> decreases it, and longer bars matter more. Together they add up to the difference between this patient\'s log-odds and the model\'s reference value. Variables left as N/A and the prediction horizon are not shown.',
+  lr: 'Each bar is the variable\'s term in the logistic regression: its coefficient multiplied by how far this patient is from the training average, in standard deviations. <strong style="color:#c0504d">Red</strong> increases the risk, <strong style="color:#3d8b68">green</strong> decreases it. For a linear model these terms are exact SHAP values, and they add up to the difference between this patient\'s log-odds and those of a patient at the training average on all five variables. The prediction horizon is not shown.'
+};
 
-  return Array.from(total);
+function renderSHAP(res, year, prob, model) {
+  document.getElementById('shapIntro').innerHTML = SHAP_INTRO[model];
+  const items = res.names.map((key, i) => ({
+    key, name: FEATURE_LABELS[key] || key, value: res.values[i], featVal: res.inputs[i]
+  })).filter(d => d.key !== 'years in the future' && !isNA(d.featVal));
+  items.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  const top = items.slice(0, 15);
+  const maxAbs = Math.max(...top.map(d => Math.abs(d.value)), 0.01);
+
+  const col = prob >= RISK_THRESHOLD ? 'var(--risk-high)' : 'var(--risk-low)';
+  document.getElementById('shapBaseInfo').innerHTML =
+    `Predicted risk at <strong>${year} years</strong>: <strong style="color:${col}">${(prob * 100).toFixed(1)}%</strong>`;
+
+  document.getElementById('shapContainer').innerHTML = top.map((d, i) => `
+      <div class="shap-bar-row" style="animation-delay:${i * 40}ms">
+        <span class="shap-feat-name" title="${d.name}">${d.name} = ${formatValue(d.key, d.featVal)}</span>
+        <div class="shap-bar-area">
+          <div class="shap-bar-bg"></div>
+          <div class="shap-bar ${d.value >= 0 ? 'positive' : 'negative'}" style="width:${(Math.abs(d.value) / maxAbs) * 100}%"></div>
+        </div>
+        <span class="shap-value">${d.value >= 0 ? '+' : ''}${d.value.toFixed(3)}</span>
+      </div>`).join('');
 }
 
 // ============================================================
-// CHARTS
+// CHART
 // ============================================================
 let probChartInstance = null;
 
 function renderProbCurve(probs) {
   const ctx = document.getElementById('probChart').getContext('2d');
   if (probChartInstance) probChartInstance.destroy();
-
   const years = probs.map(p => p.year);
   const values = probs.map(p => p.prob * 100);
+  const yMax = Math.min(100, Math.max(50, Math.ceil(Math.max(...values) / 10) * 10 + 10));
 
   const gradient = ctx.createLinearGradient(0, 0, 0, 320);
   gradient.addColorStop(0, 'rgba(45,106,79,0.15)');
@@ -1513,7 +1695,7 @@ function renderProbCurve(probs) {
     data: {
       labels: years,
       datasets: [{
-        label: 'P(SCD ≥ 2)',
+        label: 'Predicted risk',
         data: values,
         borderColor: '#2d6a4f',
         backgroundColor: gradient,
@@ -1525,187 +1707,163 @@ function renderProbCurve(probs) {
         pointHoverRadius: 7,
         fill: true,
         tension: 0.3,
+      }, {
+        label: `Threshold (${Math.round(RISK_THRESHOLD * 100)}%)`,
+        data: years.map(() => RISK_THRESHOLD * 100),
+        borderColor: '#c1121f',
+        borderDash: [6, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: true, position: 'bottom',
+          labels: { font: { family: 'DM Sans', size: 12 }, color: '#4a4a6a', boxWidth: 18, boxHeight: 2 }
+        },
         tooltip: {
           backgroundColor: '#1a1a2e',
           titleFont: { family: 'DM Sans', size: 13 },
           bodyFont: { family: 'JetBrains Mono', size: 13 },
           padding: 12,
           cornerRadius: 8,
+          filter: item => item.datasetIndex === 0,
           callbacks: {
-            label: ctx => `Risk: ${ctx.parsed.y.toFixed(1)}%`
+            title: items => `${items[0].label} year${items[0].label === '1' ? '' : 's'}`,
+            label: c => `Risk: ${c.parsed.y.toFixed(1)}%`
           }
         }
       },
       scales: {
         x: {
-          title: {
-            display: true,
-            text: 'Years from baseline',
-            font: { family: 'DM Sans', size: 13, weight: '500' },
-            color: '#8888a8'
-          },
+          title: { display: true, text: 'Years from baseline', font: { family: 'DM Sans', size: 13, weight: '500' }, color: '#8888a8' },
           grid: { color: 'rgba(0,0,0,0.04)' },
           ticks: { font: { family: 'DM Sans', size: 12 }, color: '#8888a8' }
         },
         y: {
-          title: {
-            display: true,
-            text: 'Probability of SCD ≥ 2 (%)',
-            font: { family: 'DM Sans', size: 13, weight: '500' },
-            color: '#8888a8'
-          },
+          title: { display: true, text: 'Probability of item 1.1 ≥ 2 (%)', font: { family: 'DM Sans', size: 13, weight: '500' }, color: '#8888a8' },
           min: 0,
-          max: 100,
+          max: yMax,
           grid: { color: 'rgba(0,0,0,0.04)' },
-          ticks: {
-            font: { family: 'JetBrains Mono', size: 11 },
-            color: '#8888a8',
-            callback: v => v + '%'
-          }
+          ticks: { font: { family: 'JetBrains Mono', size: 11 }, color: '#8888a8', callback: v => v + '%' }
         }
       }
     }
   });
 }
 
-function renderSHAP(shapValues, featureValues, year) {
-  const container = document.getElementById('shapContainer');
-  const baseInfo = document.getElementById('shapBaseInfo');
-
-  const indexed = shapValues.map((v, i) => ({
-    name: FEATURE_LABELS[FEATURES_ORDER[i]] || FEATURES_ORDER[i],
-    value: v,
-    featVal: featureValues[i],
-    featName: FEATURES_ORDER[i]
-  }));
-
-  const filtered = indexed.filter(d => d.featName !== 'years in the future' && !Number.isNaN(d.featVal));
-  filtered.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-  const top = filtered.slice(0, 15);
-
-  const maxAbs = Math.max(...top.map(d => Math.abs(d.value)), 0.01);
-  const prediction = predictProba(featureValues);
-
-  baseInfo.innerHTML = `Predicted probability at <strong>${year} years</strong>: <strong style="color:${prediction > 0.5 ? '#c1121f' : '#2d6a4f'}">${(prediction * 100).toFixed(1)}%</strong>`;
-
-  let html = '';
-  top.forEach((d, i) => {
-    const pct = (Math.abs(d.value) / maxAbs) * 100;
-    const cls = d.value >= 0 ? 'positive' : 'negative';
-    const fv = Number.isNaN(d.featVal) ? 'N/A' : (Number.isInteger(d.featVal) ? d.featVal : d.featVal.toFixed(1));
-    html += `
-      <div class="shap-bar-row" style="animation-delay:${i * 40}ms">
-        <span class="shap-feat-name" title="${d.name}">${d.name} = ${fv}</span>
-        <div class="shap-bar-area">
-          <div class="shap-bar-bg"></div>
-          <div class="shap-bar ${cls}" style="width:${pct}%"></div>
-        </div>
-        <span class="shap-value">${d.value >= 0 ? '+' : ''}${d.value.toFixed(3)}</span>
-      </div>
-    `;
-  });
-
-  container.innerHTML = html;
-}
-
 // ============================================================
 // RISK TILES
 // ============================================================
 function renderRiskTiles(probs) {
-  const container = document.getElementById('riskTiles');
-  const keyYears = [
-    { year: 2, label: '2 years' },
-    { year: 5, label: '5 years' },
-    { year: 8, label: '8 years' },
-  ];
-
-  let html = '';
-  keyYears.forEach(ky => {
-    const match = probs.find(p => p.year === ky.year);
-    const prob = match ? match.prob : 0;
-    const pct = (prob * 100).toFixed(1);
-    let color, label;
-    if (prob < 0.25) { color = 'var(--risk-low)'; label = 'Low Risk'; }
-    else if (prob < 0.50) { color = 'var(--risk-mid)'; label = 'Moderate'; }
-    else { color = 'var(--risk-high)'; label = 'Elevated'; }
-
-    html += `
+  const tiles = [2, 5, 8].map(year => {
+    const prob = probs.find(p => p.year === year).prob;
+    const high = prob >= RISK_THRESHOLD;
+    const color = high ? 'var(--risk-high)' : 'var(--risk-low)';
+    return `
       <div class="risk-tile">
-        <div class="risk-year">${ky.label}</div>
-        <div class="risk-value" style="color:${color}">${pct}%</div>
-        <div class="risk-label" style="color:${color}">${label}</div>
-      </div>
-    `;
-  });
+        <div class="risk-year">${year} years</div>
+        <div class="risk-value" style="color:${color}">${(prob * 100).toFixed(1)}%</div>
+        <div class="risk-label" style="color:${color}">${high ? 'Higher risk' : 'Lower risk'}</div>
+      </div>`;
+  }).join('');
 
-  html += `<div class="risk-explanation">
-    <strong>How to read:</strong> The percentage indicates the model's estimated probability that this patient will develop significant cognitive complaints (MDS-UPDRS I.1 ≥ 2) within the given time horizon.
-    <strong>Low</strong> (&lt; 25%): the model considers the risk below the population average.
-    <strong>Moderate</strong> (25–50%): the risk is above average and warrants monitoring.
-    <strong>Elevated</strong> (&gt; 50%): the model estimates a high probability of future cognitive decline.
-  </div>`;
-
-  container.innerHTML = html;
+  document.getElementById('riskTiles').innerHTML = tiles + `
+    <div class="risk-explanation">
+      <strong>How to read:</strong> each percentage is the estimated probability that the patient progresses from item 1.1 ≤ 1 to ≥ 2 (clinically evident cognitive impairment) by that horizon.
+      <strong>Higher risk</strong> means at or above <strong>22%</strong>, the threshold used in the paper (sensitivity 0.79 and specificity 0.73 for the full model in NS-Park); for reference, 21% of visit pairs progressed in NS-Park.
+      It is a reference point rather than a validated clinical cut-off. In PPMI, predicted risks were on average lower than observed, so compare patients in relative terms rather than reading the percentage literally.
+    </div>`;
 }
 
 // ============================================================
 // MAIN PREDICTION
 // ============================================================
-let lastProbs = null;
 let lastVals = null;
+let lastModel = null;
+let busy = false;
+let rerunRequested = false;
+let shapToken = 0;
+
+function hideResults() {
+  ['summaryCard', 'curveCard', 'shapCard'].forEach(id => document.getElementById(id).classList.remove('visible'));
+}
 
 async function runPrediction() {
-  if (!MODEL) return;
-
+  if (busy) { rerunRequested = true; return; }
+  const model = currentModel;
   const vals = gatherFeatures();
-  const valid = validateFeatures(vals);
-  if (valid === false) return;
+  if (validateFeatures(vals, model) === false) { hideResults(); return; }
 
-  lastVals = vals;
-
+  busy = true;
   const btn = document.getElementById('predictBtn');
   btn.disabled = true;
-  btn.textContent = 'Computing predictions…';
-  await new Promise(r => setTimeout(r, 50));
+  try {
+    if (model === 'xgb' && !MODEL) {
+      btn.textContent = 'Loading full model…';
+      try { await modelPromise; }
+      catch (e) {
+        showMessage('error', 'The full model (model.json) could not be loaded. Check the connection and reload the page, or use the simple model.');
+        hideResults();
+        return;
+      }
+    }
+    btn.textContent = 'Computing predictions…';
+    await new Promise(r => setTimeout(r, 30));
 
-  const probs = [];
-  for (let y = 1; y <= 10; y++) {
-    const vec = buildFeatureVector(vals, y);
-    const p = predictProba(vec);
-    probs.push({ year: y, prob: p });
+    const probs = [];
+    for (let y = 1; y <= 10; y++) probs.push({ year: y, prob: predictRisk(model, vals, y) });
+    lastVals = vals;
+    lastModel = model;
+
+    document.getElementById('resultModelChip').textContent = MODEL_INFO[model].short;
+    renderRiskTiles(probs);
+    renderProbCurve(probs);
+    ['summaryCard', 'curveCard'].forEach((id, i) =>
+      setTimeout(() => document.getElementById(id).classList.add('visible'), i * 150));
+
+    btn.textContent = 'Computing feature contributions…';
+    await runSHAP(parseInt(document.getElementById('shapYearSelect').value));
+    document.getElementById('shapCard').classList.add('visible');
+  } catch (err) {
+    console.error('Prediction error:', err);
+    document.getElementById('shapContainer').innerHTML = '<div style="padding:12px;color:var(--ink-muted);font-size:13px;">Feature contributions could not be computed. The risk estimates above are still valid.</div>';
+    document.getElementById('shapCard').classList.add('visible');
+  } finally {
+    busy = false;
+    btn.disabled = false;
+    btn.textContent = 'Generate Risk Trajectory';
+    if (rerunRequested) { rerunRequested = false; runPrediction(); }
   }
-  lastProbs = probs;
-
-  renderRiskTiles(probs);
-  renderProbCurve(probs);
-
-  ['summaryCard', 'curveCard'].forEach((id, i) => {
-    setTimeout(() => document.getElementById(id).classList.add('visible'), i * 150);
-  });
-
-  btn.textContent = 'Computing feature contributions…';
-  await new Promise(r => setTimeout(r, 50));
-
-  const shapYear = parseInt(document.getElementById('shapYearSelect').value);
-  await runSHAP(shapYear);
-  document.getElementById('shapCard').classList.add('visible');
-
-  btn.disabled = false;
-  btn.textContent = 'Generate Risk Trajectory';
 }
 
 async function runSHAP(year) {
   if (!lastVals) return;
-  const vec = buildFeatureVector(lastVals, year);
-  const shapVals = await computeTreeSHAP(vec);
-  renderSHAP(shapVals, vec, year);
+  const token = ++shapToken;
+  const model = lastModel;
+  const res = await computeContributions(model, lastVals, year);
+  if (token !== shapToken) return;   // a newer request superseded this one
+  renderSHAP(res, year, predictRisk(model, lastVals, year), model);
+}
+
+function setModel(model) {
+  if (model === currentModel) return;
+  currentModel = model;
+  document.querySelectorAll('.model-option').forEach(b => {
+    const on = b.dataset.model === model;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+  document.getElementById('formPanel').classList.toggle('mode-lr', model === 'lr');
+  try { localStorage.setItem('nspark-model', model); } catch (e) {}
+  showMessage(null);
+  if (lastVals) runPrediction(); else hideResults();
 }
 
 // ============================================================
@@ -1718,17 +1876,19 @@ document.addEventListener('DOMContentLoaded', () => {
   buildScoreSelector('psychFields', SCORE_FIELDS.psych);
   initScoreSelectors();
 
-  // Init unknown buttons: disable their associated inputs
   document.querySelectorAll('.unknown-btn.active').forEach(btn => {
     const input = btn.parentElement.querySelector('input');
     if (input) { input.classList.add('is-unknown'); input.disabled = true; }
   });
 
+  document.querySelectorAll('.model-option').forEach(b =>
+    b.addEventListener('click', () => setModel(b.dataset.model)));
   document.getElementById('shapYearSelect').addEventListener('change', e => {
     runSHAP(parseInt(e.target.value));
   });
 
   loadModel();
+  try { if (localStorage.getItem('nspark-model') === 'lr') setModel('lr'); } catch (e) {}
 });
 </script>
 
